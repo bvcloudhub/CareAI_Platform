@@ -1,0 +1,55 @@
+{
+  "apple_watch": {
+    "label": "Apple Watch",
+    "sdk": "Apple HealthKit",
+    "icon": "⌚",
+    "records_key": "samples",
+    "type_key": "type",
+    "metrics": {
+      "HKQuantityTypeIdentifierHeartRate": ["heart_rate", "bpm"],
+      "HKQuantityTypeIdentifierOxygenSaturation": ["spo2", "%"],
+      "HKQuantityTypeIdentifierRespiratoryRate": ["resp_rate", "/min"],
+      "HKQuantityTypeIdentifierBloodPressureSystolic": ["bp_sys", "mmHg"],
+      "HKQuantityTypeIdentifierBloodPressureDiastolic": ["bp_dia", "mmHg"],
+      "HKQuantityTypeIdentifierStepCount": ["activity", "score"],
+      "HKCategoryTypeIdentifierSleepAnalysis": ["sleep", "score"]
+    },
+    "transform": {
+      "HKQuantityTypeIdentifierStepCount": "steps_to_activity",
+      "HKCategoryTypeIdentifierSleepAnalysis": "sleep_to_score"
+    }
+  },
+  "samsung_health": {
+    "label": "Samsung Health",
+    "sdk": "Health Connect / Samsung Health Data SDK",
+    "icon": "📱",
+    "records_key": "records",
+    "type_key": "recordType",
+    "metrics": {
+      "HeartRateRecord": ["heart_rate", "bpm"],
+      "OxygenSaturationRecord": ["spo2", "%"],
+      "RespiratoryRateRecord": ["resp_rate", "/min"],
+      "BloodPressureRecord.systolic": ["bp_sys", "mmHg"],
+      "BloodPressureRecord.diastolic": ["bp_dia", "mmHg"],
+      "StepsRecord": ["activity", "score"],
+      "SleepSessionRecord": ["sleep", "score"]
+    },
+    "transform": {
+      "StepsRecord": "steps_to_activity",
+      "SleepSessionRecord": "sleep_to_score"
+    }
+  },
+  "demo_band": {
+    "label": "Demo Band",
+    "sdk": "Generic Wearable API",
+    "icon": "⌚",
+    "records_key": "data",
+    "type_key": "metric",
+    "metrics": {
+      "hr": ["heart_rate", "bpm"],
+      "oxygen": ["spo2", "%"],
+      "breathing": ["resp_rate", "/min"]
+    },
+    "transform": {}
+  }
+}
