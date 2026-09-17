@@ -8,14 +8,14 @@ except Exception:
     # Shell environment variables still work if python-dotenv is unavailable.
     pass
 from functools import wraps
-from flask import (Flask, render_template, request, redirect, url_for, jsonify, flash, abort, session,
-                   send_from_directory, make_response)
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, abort, session, send_from_directory
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash
 
 from services.db import init_db, query_db, execute_db
 from services.risk_engine import compute_all_risks, get_latest_vitals, latest_risks
 from services.simulator import tick_all_patients, run_named_scenario
+from services import wearable_sync
 from services.fhir_service import patient_bundle
 from services.population_service import population_metrics
 from services.dashboard_metrics_service import (
@@ -40,8 +40,6 @@ from services.care_bot_service import (
     ui_strings as care_bot_ui_strings,
 )
 from services.diagnostics_service import analyse_demo
-from services.diagnostic_report import (build_pdf as build_report_pdf, filename_for as report_filename,
-                                        load_result as load_report_result, save_result as save_report_result)
 from services.agentic_care_service import (
     AGENT_CATALOG,
     EVENT_TYPES,
@@ -321,6 +319,11 @@ def patient(patient_id):
         "p": p,
         "active_tab": active_tab,
         "latest": get_latest_vitals(patient_id),
+        "latest_meta": wearable_sync.get_latest_vitals_meta(patient_id),
+        "wearable_providers": wearable_sync.PROVIDERS,
+        "wearable_devices": wearable_sync.get_patient_devices(patient_id),
+        "wearable_pairing_token": session.pop("wearable_pairing_token", None),
+        "wearable_status": wearable_sync.get_patient_wearable_status(patient_id),
         "risks": latest_risks(patient_id),
         "conditions": query_db("SELECT * FROM conditions WHERE patient_id=? AND active=1", (patient_id,)),
         "meds": query_db("SELECT * FROM medications WHERE patient_id=? AND active=1 ORDER BY name", (patient_id,)),
@@ -360,7 +363,50 @@ def task(patient_id):
                (patient_id,"human_action","care_team",f"{current_user.display_name} created {t}"))
     audit("CREATE_TASK", patient_id, t)
     return redirect(url_for("patient", patient_id=patient_id))
+@app.route("/patient/<int:patient_id>/wearable/pair", methods=["POST"])
+@login_required
+def pair_wearable(patient_id):
+    patient = query_db(
+        "SELECT * FROM patients WHERE id=?",
+        (patient_id,),
+        one=True
+    )
 
+    if not patient:
+        return "Patient not found", 404
+
+    provider = (request.form.get("provider") or "").strip()
+
+    try:
+        result = wearable_sync.create_pairing_token(
+            patient["external_ref"],
+            provider=provider,
+            account_label="CareAI Wearable"
+        )
+
+        session["wearable_pairing_token"] = result["token"]
+        session["wearable_pairing_provider"] = result["provider"]
+
+        return redirect(
+            url_for(
+                "patient",
+                patient_id=patient_id,
+                tab="vitals"
+            )
+        )
+
+    except PermissionError as exc:
+        flash(str(exc), "error")
+    except ValueError as exc:
+        flash(str(exc), "error")
+
+    return redirect(
+        url_for(
+            "patient",
+            patient_id=patient_id,
+            tab="vitals"
+        )
+    )
 @app.route("/patient/<int:patient_id>/medication/<int:event_id>/<decision>", methods=["POST"])
 @login_required
 @role_required("admin","nurse","gp")
@@ -812,25 +858,9 @@ def ai_diagnostics_module(module):
             image_name = f.filename
             audit("AI_DIAGNOSTIC_DEMO", None, f"{module}:{f.filename}")
 
-    # Keep the finished result so its PDF report can be built on download.
-    save_report_result(result or demo_result)
-
     return render_template("ai_diagnostics.html", **_diagnostics_context(
         result=result, demo_result=demo_result, selected_module=module,
         image_name=image_name, error=error, rejection=rejection, wound_context=wound_context))
-
-
-@app.route("/ai-diagnostics/report/<run_id>.pdf")
-@login_required
-def ai_diagnostics_report(run_id):
-    """Download one AI analysis as a PDF report."""
-    result=load_report_result(run_id)
-    if not result: abort(404)
-    response=make_response(build_report_pdf(result, clinician=current_user.display_name))
-    response.headers["Content-Type"]="application/pdf"
-    response.headers["Content-Disposition"]=f'attachment; filename="{report_filename(result)}"'
-    audit("AI_REPORT_DOWNLOAD", None, f"{result.get('module')}:{run_id}")
-    return response
 
 
 @app.route("/diagnostics-image/<path:filename>")
@@ -1304,6 +1334,87 @@ def audit_view():
                      ORDER BY a.created_at DESC LIMIT 500""")
     return render_template("audit.html",rows=rows)
 
+def _wearable_api_token():
+    auth_header = request.headers.get("Authorization", "").strip()
+    if auth_header.lower().startswith("bearer "):
+        return auth_header[7:].strip()
+    return (
+        request.headers.get("X-CareAI-Wearable-Token")
+        or request.headers.get("X-CareAI-HealthKit-Token")
+        or ""
+    ).strip()
+
+
+def _healthkit_sync_response(expected_patient_id=None):
+    if os.getenv("CAREAI_WEARABLE_API_ENABLED", "1") != "1":
+        return jsonify({"success": False, "error": "Wearable API is disabled"}), 404
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"success": False, "error": "Invalid JSON payload"}), 400
+
+    installation_id = str(payload.get("installation_id") or "").strip()
+    if not installation_id:
+        return jsonify({"success": False, "error": "installation_id is required"}), 400
+
+    device = None
+    try:
+        device = wearable_sync.authenticate_device(
+            _wearable_api_token(),
+            "apple_watch",
+            installation_id,
+            device_id=str(payload.get("device_id") or "")[:200] or None,
+            device_name=str(payload.get("device") or "")[:150] or None,
+        )
+        if expected_patient_id is not None and int(device["patient_id"]) != int(expected_patient_id):
+            return jsonify({"success": False, "error": "Wearable credential is not assigned to this patient"}), 403
+
+        result = wearable_sync.ingest_apple_healthkit(device, payload)
+        compute_all_risks(result["patient_id"])
+
+        # API calls are not Flask-login sessions, so write a minimal system audit
+        # record directly. Do not log the token or the health payload.
+        execute_db(
+            "INSERT INTO audit_logs(user_id,action,patient_id,details) VALUES(NULL,?,?,?)",
+            (
+                "HEALTHKIT_INGEST",
+                result["patient_id"],
+                json.dumps({
+                    "provider": result["provider"],
+                    "inserted": result["inserted"],
+                    "updated": result["updated"],
+                    "duplicates": result["duplicates"],
+                }),
+            ),
+        )
+        return jsonify({"success": True, **result}), 200
+    except PermissionError as exc:
+        message = str(exc)
+        status = 403 if any(word in message.lower() for word in ("consent", "inactive", "another installation")) else 401
+        return jsonify({"success": False, "error": message}), status
+    except ValueError as exc:
+        if device is not None:
+            wearable_sync.record_sync_error(device["id"], str(exc))
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        if device is not None:
+            wearable_sync.record_sync_error(device["id"], "Unexpected server error")
+        app.logger.exception("Wearable HealthKit sync failed")
+        return jsonify({"success": False, "error": "Wearable sync failed"}), 500
+
+
+@app.route("/api/wearable/healthkit/sync", methods=["POST"])
+def api_wearable_healthkit_sync():
+    """Preferred patient-safe endpoint. The credential resolves the patient."""
+    return _healthkit_sync_response()
+
+
+@app.route("/api/patient/<int:patient_id>/wearable/healthkit", methods=["POST"])
+def api_healthkit_ingest_compat(patient_id):
+    """Backward-compatible path with patient/credential cross-checking."""
+    return _healthkit_sync_response(expected_patient_id=patient_id)
+
+
 @app.route("/api/patient/<int:patient_id>/vitals")
 @login_required
 def api_vitals(patient_id):
@@ -1311,6 +1422,51 @@ def api_vitals(patient_id):
                      WHERE patient_id=? ORDER BY measured_at DESC LIMIT 240""",(patient_id,))
     audit("API_READ_VITALS",patient_id)
     return jsonify([dict(r) for r in rows])
+
+@app.route("/api/patient/<int:patient_id>/vitals/history")
+@login_required
+def api_vitals_history(patient_id):
+    kind = request.args.get("metric")
+    days = request.args.get("days", default=7, type=int)
+
+    if days not in (1, 7, 30, 90, 365):
+        days = 7
+
+    if not kind:
+        return jsonify({
+            "error": "Missing metric parameter"
+        }), 400
+
+    rows = query_db("""
+        SELECT
+            kind,
+            value,
+            unit,
+            source,
+            measured_at
+        FROM vitals
+        WHERE patient_id=?
+          AND kind=?
+          AND measured_at >= datetime('now', ?)
+        ORDER BY measured_at ASC
+    """, (
+        patient_id,
+        kind,
+        f"-{days} days"
+    ))
+
+    audit(
+        "API_READ_VITAL_HISTORY",
+        patient_id,
+        f"metric={kind},days={days}"
+    )
+
+    return jsonify({
+        "patient_id": patient_id,
+        "metric": kind,
+        "days": days,
+        "data": [dict(row) for row in rows]
+    })
 
 @app.route("/api/patient/<int:patient_id>/twin")
 @login_required
@@ -1378,4 +1534,8 @@ if __name__ == "__main__":
             compute_all_risks(p["id"])
     init_hospital_schema()
     start_optional_hospital_scheduler()
-    app.run(host="127.0.0.1", port=5002, debug=True)
+    app.run(
+    host=os.getenv("CAREAI_HOST", "0.0.0.0"),
+    port=int(os.getenv("CAREAI_PORT", "5002")),
+    debug=os.getenv("CAREAI_ENV", "development") == "development",
+)

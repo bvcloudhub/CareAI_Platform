@@ -15,14 +15,98 @@
     <form method="post" action="{{url_for('orchestrate',patient_id=p.id)}}"><button>Run Care.AI Agents</button></form>
   </div>
 </div>
-
 <div class="patient-summary">
-  <div><small>SpO₂</small><strong>{{"%.1f"|format(latest.spo2 or 0)}}%</strong></div>
-  <div><small>Heart rate</small><strong>{{"%.0f"|format(latest.heart_rate or 0)}} bpm</strong></div>
-  <div><small>Respiration</small><strong>{{"%.0f"|format(latest.resp_rate or 0)}} /min</strong></div>
-  <div><small>Blood pressure</small><strong>{{"%.0f"|format(latest.bp_sys or 0)}} / {{"%.0f"|format(latest.bp_dia or 0)}}</strong></div>
-  <div><small>Activity</small><strong>{{"%.0f"|format(latest.activity or 0)}}</strong></div>
-  <div><small>Sleep</small><strong>{{"%.0f"|format(latest.sleep or 0)}}</strong></div>
+
+  <div class="vital-card" data-metric="spo2">
+    <small>SpO₂</small>
+    <strong>
+      {% if latest.spo2 is not none %}
+        {{"%.1f"|format(latest.spo2)}}%
+      {% else %}
+        —
+      {% endif %}
+    </strong>
+    <span class="vital-meta">
+      {{latest_meta.spo2.source if latest_meta.spo2 else 'No data'}}
+    </span>
+    <span class="history-hint">View history →</span>
+  </div>
+
+  <div class="vital-card" data-metric="heart_rate">
+    <small>Heart rate</small>
+    <strong>
+      {% if latest.heart_rate is not none %}
+        {{"%.0f"|format(latest.heart_rate)}} bpm
+      {% else %}
+        —
+      {% endif %}
+    </strong>
+    <span class="vital-meta">
+      {{latest_meta.heart_rate.source if latest_meta.heart_rate else 'No data'}}
+    </span>
+    <span class="history-hint">View history →</span>
+  </div>
+
+  <div class="vital-card" data-metric="resp_rate">
+    <small>Respiration</small>
+    <strong>
+      {% if latest.resp_rate is not none %}
+        {{"%.0f"|format(latest.resp_rate)}} /min
+      {% else %}
+        —
+      {% endif %}
+    </strong>
+    <span class="vital-meta">
+      {{latest_meta.resp_rate.source if latest_meta.resp_rate else 'No data'}}
+    </span>
+    <span class="history-hint">View history →</span>
+  </div>
+
+  <div class="vital-card" data-metric="bp">
+    <small>Blood pressure</small>
+    <strong>
+      {% if latest.bp_sys is not none and latest.bp_dia is not none %}
+        {{"%.0f"|format(latest.bp_sys)}} / {{"%.0f"|format(latest.bp_dia)}}
+      {% else %}
+        —
+      {% endif %}
+    </strong>
+    <span class="vital-meta">
+      {{latest_meta.bp_sys.source if latest_meta.bp_sys else 'No data'}}
+    </span>
+    <span class="history-hint">View history →</span>
+  </div>
+
+  <div class="vital-card" data-metric="activity">
+    <small>Activity</small>
+    <strong>
+      {% if latest.activity is not none %}
+        {{"%.0f"|format(latest.activity)}}
+      {% else %}
+        —
+      {% endif %}
+    </strong>
+    <span class="vital-meta">
+      {{latest_meta.activity.source if latest_meta.activity else 'No data'}}
+    </span>
+    <span class="history-hint">View history →</span>
+  </div>
+
+  <div class="vital-card" data-metric="sleep">
+    <small>Sleep</small>
+    <strong>
+      {% if latest.sleep is not none %}
+        {{"%.0f"|format(latest.sleep)}}
+      {% else %}
+        —
+      {% endif %}
+    </strong>
+    <span class="vital-meta">
+      {{latest_meta.sleep.source if latest_meta.sleep else 'No data'}}
+    </span>
+    <span class="history-hint">View history →</span>
+  </div>
+
 </div>
 
 <nav class="patient-360-tabs" aria-label="Patient 360 sections">
@@ -92,6 +176,71 @@
 {% elif active_tab == 'vitals' %}
 <section class="panel">
   <div class="panel-head">
+    <div><div class="eyebrow">WEARABLE SYNC</div><h2>Patient-linked wearable data</h2></div>
+    {% if wearable_status.has_data %}<span class="badge">Latest {{wearable_status.latest.measured_at}}</span>{% endif %}
+  </div>
+  {% if wearable_devices %}
+  <div class="wearable-grid">
+    {% for d in wearable_devices %}
+    <article class="wearable-card">
+      <div class="wearable-card-head"><b>{{d.provider_label}}</b><span class="wearable-status {{d.status}}">{{d.status|title}}</span></div>
+      <small>{{d.account_label or 'CareAI wearable companion'}}</small>
+      <p><strong>Device:</strong> {{d.device_name or 'Waiting for first sync'}}</p>
+      <p><strong>Last sync:</strong> {{d.last_synced_at or 'Not synced yet'}}</p>
+      {% if d.last_sync_summary %}<span>{{d.last_sync_summary}}</span>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="wearable-empty">
+    <p>No wearable is connected yet.</p>
+  
+    <form method="post" action="{{url_for('pair_wearable', patient_id=p.id)}}">
+      <label for="wearable-provider"><strong>Select device / data source</strong></label>
+  
+      <select id="wearable-provider" name="provider" required>
+        <option value="" disabled selected>Select a device</option>
+  
+        {% for provider, config in wearable_providers.items() %}
+          <option value="{{ provider }}">
+            {{ config.icon }} {{ config.label }}
+          </option>
+        {% endfor %}
+      </select>
+  
+      <button type="submit">+ Pair Wearable</button>
+    </form>
+  </div>
+{% endif %}
+
+{% if wearable_pairing_token %}
+<div class="wearable-empty">
+  <strong>Wearable pairing created</strong>
+
+  <p>Enter this pairing token in the CareAI Wearable app:</p>
+
+  <code style="display:block; margin-top:10px; word-break:break-all;">
+    {{wearable_pairing_token}}
+  </code>
+
+  <p style="margin-top:10px;">
+    This token is shown only once.
+  </p>
+</div>
+{% endif %}
+  {% if wearable_status.has_data %}
+  <div class="wearable-source-line">
+    <b>Latest wearable source:</b> {{wearable_status.latest.source or wearable_status.latest.provider}}
+    {% if wearable_status.latest.device_name %} · {{wearable_status.latest.device_name}}{% endif %}
+    · {{wearable_status.measurement_count}} stored wearable measurements
+  </div>
+  {% else %}
+  <div class="wearable-empty compact">No recent wearable data available.</div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
     <div><div class="eyebrow">MONITOR</div><h2>Continuous health signals</h2></div>
     <span>Wearables · devices · smart home</span>
   </div>
@@ -112,7 +261,72 @@
     </table>
   </div>
 </section>
+<section class="panel" id="historyPanel" style="display:none;margin-top:20px;">
 
+  <div class="panel-head">
+
+    <div>
+      <div class="eyebrow">HEALTH HISTORY</div>
+
+      <h2 id="historyTitle">
+        Metric history
+      </h2>
+
+      <p id="historySubtitle"
+         style="margin:4px 0 0;color:var(--muted);font-size:13px;">
+        Historical measurements
+      </p>
+    </div>
+
+    <div class="button-row">
+
+      <button type="button"
+              class="history-range"
+              data-days="7">
+        7 days
+      </button>
+
+      <button type="button"
+              class="history-range"
+              data-days="30">
+        30 days
+      </button>
+
+      <button type="button"
+              class="history-range"
+              data-days="90">
+        90 days
+      </button>
+
+    </div>
+
+  </div>
+
+  <div style="height:320px;margin-top:20px;">
+    <canvas id="historyChart"></canvas>
+  </div>
+
+  <div id="historySummary"
+       style="
+         margin-top:18px;
+         padding:14px;
+         border:1px solid var(--line);
+         border-radius:10px;
+         font-size:13px;
+       ">
+  </div>
+
+  <div style="margin-top:18px;">
+
+    <h3 style="margin-bottom:10px;">
+      Recent measurements
+    </h3>
+
+    <div id="historyMeasurements"></div>
+
+  </div>
+
+</section>
 {% elif active_tab == 'digital_twin' %}
 <section class="panel">
   <div class="panel-head">
@@ -215,6 +429,54 @@
 {% endif %}
 
 {% if active_tab == 'vitals' %}
+<style>.vital-card {
+  cursor: pointer;
+  position: relative;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.vital-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,.08);
+}
+
+.history-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  opacity: .8;
+}
+
+.history-range {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.history-range.active {
+  background: var(--ink);
+  color: white;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.history-row:last-child {
+  border-bottom: none;
+}
+
+.history-source {
+  color: var(--muted);
+}</style>
 <script>
 (function () {
   const canvas = document.getElementById('vitalChart');
@@ -243,6 +505,764 @@
     })
     .catch(() => { /* table remains available if chart data cannot be loaded */ });
 })();
+
 </script>
+<script>
+  (function () {
+  
+    let historyChart = null;
+    let selectedMetric = null;
+    let selectedDays = 7;
+  
+    const metricInfo = {
+  
+      spo2: {
+        title: 'SpO₂ history',
+        unit: '%',
+        apiMetric: 'spo2'
+      },
+  
+      heart_rate: {
+        title: 'Heart rate history',
+        unit: 'bpm',
+        apiMetric: 'heart_rate'
+      },
+  
+      resp_rate: {
+        title: 'Respiration history',
+        unit: '/min',
+        apiMetric: 'resp_rate'
+      },
+  
+      activity: {
+        title: 'Activity history',
+        unit: '',
+        apiMetric: 'activity'
+      },
+  
+      sleep: {
+        title: 'Sleep history',
+        unit: '',
+        apiMetric: 'sleep'
+      },
+  
+      bp: {
+        title: 'Blood pressure history',
+        unit: 'mmHg',
+        apiMetric: 'bp'
+      }
+  
+    };
+  
+  
+    // --------------------------------------------------
+    // CLICK ON VITAL CARD
+    // --------------------------------------------------
+  
+    document.querySelectorAll('.vital-card').forEach(card => {
+  
+      card.addEventListener('click', () => {
+  
+        selectedMetric = card.dataset.metric;
+        selectedDays = 7;
+  
+        const panel = document.getElementById('historyPanel');
+  
+        if (!panel) {
+          return;
+        }
+  
+        panel.style.display = 'block';
+  
+        panel.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+  
+        document
+          .querySelectorAll('.history-range')
+          .forEach(button => {
+  
+            button.classList.toggle(
+              'active',
+              button.dataset.days === '7'
+            );
+  
+          });
+  
+        loadHistory();
+  
+      });
+  
+    });
+  
+  
+    // --------------------------------------------------
+    // RANGE BUTTONS
+    // --------------------------------------------------
+  
+    document.querySelectorAll('.history-range').forEach(button => {
+  
+      button.addEventListener('click', () => {
+  
+        selectedDays = Number(button.dataset.days);
+  
+        document
+          .querySelectorAll('.history-range')
+          .forEach(b => b.classList.remove('active'));
+  
+        button.classList.add('active');
+  
+        loadHistory();
+  
+      });
+  
+    });
+  
+  
+    // --------------------------------------------------
+    // LOAD HISTORY
+    // --------------------------------------------------
+  
+    async function loadHistory() {
+  
+      const info = metricInfo[selectedMetric];
+  
+      if (!info) {
+        return;
+      }
+  
+      document.getElementById('historyTitle').textContent =
+        info.title;
+  
+      document.getElementById('historySubtitle').textContent =
+        `Last ${selectedDays} days · historical measurements`;
+  
+  
+      // --------------------------------------------------
+      // BLOOD PRESSURE
+      // --------------------------------------------------
+  
+      if (selectedMetric === 'bp') {
+  
+        const [sysResponse, diaResponse] =
+          await Promise.all([
+  
+            fetch(
+              "{{url_for('api_vitals_history',patient_id=p.id)}}"
+              + "?metric=bp_sys&days="
+              + selectedDays
+            ),
+  
+            fetch(
+              "{{url_for('api_vitals_history',patient_id=p.id)}}"
+              + "?metric=bp_dia&days="
+              + selectedDays
+            )
+  
+          ]);
+  
+        const sysData = await sysResponse.json();
+        const diaData = await diaResponse.json();
+  
+        renderBloodPressureHistory(
+          sysData.data || [],
+          diaData.data || []
+        );
+  
+        return;
+      }
+  
+  
+      // --------------------------------------------------
+      // NORMAL METRIC
+      // --------------------------------------------------
+  
+      const response = await fetch(
+        "{{url_for('api_vitals_history',patient_id=p.id)}}"
+        + "?metric="
+        + info.apiMetric
+        + "&days="
+        + selectedDays
+      );
+  
+      const result = await response.json();
+  
+      renderSingleMetricHistory(
+        result.data || [],
+        info
+      );
+  
+    }
+  
+  
+    // --------------------------------------------------
+    // SINGLE METRIC
+    // --------------------------------------------------
+  
+    function renderSingleMetricHistory(rows, info) {
+  
+      if (historyChart) {
+        historyChart.destroy();
+        historyChart = null;
+      }
+  
+      if (!rows.length) {
+  
+        document.getElementById('historySummary').innerHTML =
+          'No historical measurements found for this period.';
+  
+        document.getElementById('historyMeasurements').innerHTML =
+          '<p style="color:var(--muted)">No measurements found.</p>';
+  
+        return;
+      }
+  
+  
+      const isActivity =
+        selectedMetric === 'activity';
+  
+  
+      const labels = rows.map(row =>
+        formatDateTime(row.measured_at)
+      );
+  
+      const values = rows.map(row =>
+        Number(row.value)
+      );
+  
+  
+      historyChart = new Chart(
+        document.getElementById('historyChart'),
+        {
+  
+          type: isActivity ? 'bar' : 'line',
+  
+          data: {
+  
+            labels: labels,
+  
+            datasets: [
+  
+              {
+                label: info.title.replace(' history', ''),
+                data: values,
+                tension: .35,
+                borderWidth: 2,
+                pointRadius: isActivity ? 0 : 3,
+                fill: false,
+                borderRadius: isActivity ? 5 : 0
+              }
+  
+            ]
+  
+          },
+  
+          options: {
+  
+            responsive: true,
+            maintainAspectRatio: false,
+  
+            interaction: {
+              mode: 'index',
+              intersect: false
+            },
+  
+            plugins: {
+  
+              legend: {
+                position: 'bottom'
+              },
+  
+              tooltip: {
+  
+                callbacks: {
+  
+                  label: function(context) {
+  
+                    return context.dataset.label
+                      + ': '
+                      + Number(context.raw).toFixed(1)
+                      + (info.unit
+                        ? ' ' + info.unit
+                        : '');
+  
+                  }
+  
+                }
+  
+              }
+  
+            },
+  
+            scales: {
+  
+              x: {
+  
+                grid: {
+                  display: false
+                },
+  
+                ticks: {
+                  maxTicksLimit: 10
+                }
+  
+              },
+  
+              y: {
+  
+                beginAtZero: isActivity,
+  
+                ticks: {
+  
+                  callback: function(value) {
+  
+                    return value
+                      + (info.unit
+                        ? ' ' + info.unit
+                        : '');
+  
+                  }
+  
+                }
+  
+              }
+  
+            }
+  
+          }
+  
+        }
+      );
+  
+  
+      renderHistorySummary(rows, info);
+  
+      renderMeasurementList(rows, info);
+  
+    }
+  
+  
+    // --------------------------------------------------
+    // BLOOD PRESSURE
+    // --------------------------------------------------
+  
+    function renderBloodPressureHistory(
+      sysRows,
+      diaRows
+    ) {
+  
+      if (historyChart) {
+        historyChart.destroy();
+        historyChart = null;
+      }
+  
+  
+      const labels = [
+        ...new Set([
+          ...sysRows.map(r => r.measured_at),
+          ...diaRows.map(r => r.measured_at)
+        ])
+      ].sort();
+  
+  
+      const sysMap = {};
+      const diaMap = {};
+  
+  
+      sysRows.forEach(row => {
+        sysMap[row.measured_at] =
+          Number(row.value);
+      });
+  
+  
+      diaRows.forEach(row => {
+        diaMap[row.measured_at] =
+          Number(row.value);
+      });
+  
+  
+      const systolic = labels.map(
+        label => sysMap[label] ?? null
+      );
+  
+      const diastolic = labels.map(
+        label => diaMap[label] ?? null
+      );
+  
+  
+      historyChart = new Chart(
+        document.getElementById('historyChart'),
+        {
+  
+          type: 'line',
+  
+          data: {
+  
+            labels: labels.map(formatDateTime),
+  
+            datasets: [
+  
+              {
+                label: 'Systolic',
+                data: systolic,
+                tension: .35,
+                borderWidth: 2,
+                pointRadius: 3,
+                fill: false
+              },
+  
+              {
+                label: 'Diastolic',
+                data: diastolic,
+                tension: .35,
+                borderWidth: 2,
+                pointRadius: 3,
+                fill: false
+              }
+  
+            ]
+  
+          },
+  
+          options: {
+  
+            responsive: true,
+            maintainAspectRatio: false,
+  
+            interaction: {
+              mode: 'index',
+              intersect: false
+            },
+  
+            plugins: {
+  
+              legend: {
+                position: 'bottom'
+              },
+  
+              tooltip: {
+  
+                callbacks: {
+  
+                  label: function(context) {
+  
+                    return context.dataset.label
+                      + ': '
+                      + Number(context.raw).toFixed(0)
+                      + ' mmHg';
+  
+                  }
+  
+                }
+  
+              }
+  
+            },
+  
+            scales: {
+  
+              x: {
+  
+                grid: {
+                  display: false
+                },
+  
+                ticks: {
+                  maxTicksLimit: 10
+                }
+  
+              },
+  
+              y: {
+  
+                title: {
+                  display: true,
+                  text: 'mmHg'
+                }
+  
+              }
+  
+            }
+  
+          }
+  
+        }
+      );
+  
+  
+      const sysValues =
+        sysRows.map(r => Number(r.value));
+  
+      const diaValues =
+        diaRows.map(r => Number(r.value));
+  
+  
+      const average = values =>
+        values.length
+          ? values.reduce((a,b) => a + b, 0)
+            / values.length
+          : null;
+  
+  
+      const sysAvg = average(sysValues);
+      const diaAvg = average(diaValues);
+  
+      const sysMin =
+        sysValues.length
+          ? Math.min(...sysValues)
+          : null;
+  
+      const sysMax =
+        sysValues.length
+          ? Math.max(...sysValues)
+          : null;
+  
+      const diaMin =
+        diaValues.length
+          ? Math.min(...diaValues)
+          : null;
+  
+      const diaMax =
+        diaValues.length
+          ? Math.max(...diaValues)
+          : null;
+  
+  
+      document.getElementById(
+        'historySummary'
+      ).innerHTML = `
+  
+        <div style="display:flex;gap:30px;flex-wrap:wrap;">
+  
+          <div>
+            <small>Measurements</small>
+            <strong style="display:block;font-size:18px;">
+              ${labels.length}
+            </strong>
+          </div>
+  
+          <div>
+            <small>Average</small>
+            <strong style="display:block;font-size:18px;">
+              ${sysAvg !== null ? sysAvg.toFixed(0) : '—'}
+              /
+              ${diaAvg !== null ? diaAvg.toFixed(0) : '—'}
+              mmHg
+            </strong>
+          </div>
+  
+          <div>
+            <small>Lowest</small>
+            <strong style="display:block;font-size:18px;">
+              ${sysMin !== null ? sysMin.toFixed(0) : '—'}
+              /
+              ${diaMin !== null ? diaMin.toFixed(0) : '—'}
+              mmHg
+            </strong>
+          </div>
+  
+          <div>
+            <small>Highest</small>
+            <strong style="display:block;font-size:18px;">
+              ${sysMax !== null ? sysMax.toFixed(0) : '—'}
+              /
+              ${diaMax !== null ? diaMax.toFixed(0) : '—'}
+              mmHg
+            </strong>
+          </div>
+  
+        </div>
+  
+      `;
+  
+  
+      renderMeasurementList(
+        sysRows,
+        {
+          title: 'Blood pressure · systolic',
+          unit: 'mmHg'
+        }
+      );
+  
+    }
+  
+  
+    // --------------------------------------------------
+    // SUMMARY
+    // --------------------------------------------------
+  
+    function renderHistorySummary(rows, info) {
+  
+      const values =
+        rows.map(r => Number(r.value));
+  
+      const min =
+        Math.min(...values);
+  
+      const max =
+        Math.max(...values);
+  
+      const average =
+        values.reduce((a,b) => a + b, 0)
+        / values.length;
+  
+  
+      document.getElementById(
+        'historySummary'
+      ).innerHTML = `
+  
+        <div style="display:flex;gap:30px;flex-wrap:wrap;">
+  
+          <div>
+            <small>Measurements</small>
+            <strong style="display:block;font-size:18px;">
+              ${values.length}
+            </strong>
+          </div>
+  
+          <div>
+            <small>Average</small>
+            <strong style="display:block;font-size:18px;">
+              ${average.toFixed(1)}
+              ${info.unit || ''}
+            </strong>
+          </div>
+  
+          <div>
+            <small>Lowest</small>
+            <strong style="display:block;font-size:18px;">
+              ${min}
+              ${info.unit || ''}
+            </strong>
+          </div>
+  
+          <div>
+            <small>Highest</small>
+            <strong style="display:block;font-size:18px;">
+              ${max}
+              ${info.unit || ''}
+            </strong>
+          </div>
+  
+        </div>
+  
+      `;
+  
+    }
+  
+  
+    // --------------------------------------------------
+    // MEASUREMENT LIST
+    // --------------------------------------------------
+  
+    function renderMeasurementList(rows, info) {
+  
+      const container =
+        document.getElementById(
+          'historyMeasurements'
+        );
+  
+  
+      if (!rows.length) {
+  
+        container.innerHTML =
+          '<p style="color:var(--muted)">No measurements found.</p>';
+  
+        return;
+      }
+  
+  
+      const recentRows =
+        [...rows]
+          .reverse()
+          .slice(0, 12);
+  
+  
+      container.innerHTML =
+        recentRows.map(row => `
+  
+          <div class="history-row">
+  
+            <div>
+              <b>${row.value}</b>
+              ${info.unit || row.unit || ''}
+            </div>
+  
+            <div>
+              ${formatDateTime(row.measured_at)}
+            </div>
+  
+            <div class="history-source">
+              ${formatSource(row.source)}
+            </div>
+  
+          </div>
+  
+        `).join('');
+  
+    }
+  
+  
+    // --------------------------------------------------
+    // DATE
+    // --------------------------------------------------
+  
+    function formatDateTime(value) {
+  
+      if (!value) {
+        return '';
+      }
+  
+      const date = new Date(value);
+  
+      if (Number.isNaN(date.getTime())) {
+        return value;
+      }
+  
+      return date.toLocaleString([], {
+  
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+  
+      });
+  
+    }
+  
+  
+    // --------------------------------------------------
+    // SOURCE
+    // --------------------------------------------------
+  
+    function formatSource(source) {
+  
+      if (source === 'apple_healthkit') {
+        return '⌚ Apple Health';
+      }
+  
+      if (source === 'apple_watch') {
+        return '⌚ Apple Watch';
+      }
+  
+      if (source === 'samsung_health') {
+        return '📱 Samsung Health';
+      }
+  
+      if (
+        source === 'simulator' ||
+        source === 'monitoring_sim' ||
+        source === 'scenario_reset'
+      ) {
+        return '🖥 Simulator';
+      }
+  
+      return source || 'Unknown';
+  
+    }
+  
+  })();
+  </script>
 {% endif %}
 {% endblock %}
