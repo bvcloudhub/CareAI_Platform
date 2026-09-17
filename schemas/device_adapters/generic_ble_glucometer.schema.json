@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "careai://schemas/device-adapters/generic_ble_glucometer/1.0",
+  "title": "CareAI Generic BLE Glucometer Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_id", "patient_id", "device_type", "device_identifier", "source", "measurement_timestamp", "measurements"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "record_id": {"type": "string", "minLength": 1, "maxLength": 160},
+    "patient_id": {"type": "string", "minLength": 1},
+    "device_type": {"const": "generic_ble_glucometer"},
+    "device_identifier": {"type": "string", "minLength": 1, "maxLength": 160},
+    "source": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": {"enum": ["simulated", "vendor_api", "ble_gateway", "manual_json", "api"]},
+        "name": {"type": "string", "minLength": 1}
+      }
+    },
+    "measurement_timestamp": {"type": "string", "format": "date-time"},
+    "measurements": {
+      "type": "object",
+      "required": ["glucose"],
+      "properties": {
+        "glucose": {
+          "type": "object",
+          "required": ["value", "unit"],
+          "properties": {
+            "value": {"type": "number"},
+            "unit": {"enum": ["mmol/L", "mg/dL"]}
+          }
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "meal_context": {"enum": ["fasting", "before_meal", "after_meal", "random", "unknown"]}
+      }
+    }
+  }
+}

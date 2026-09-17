@@ -29,13 +29,13 @@
   <nav aria-label="{{t('command_centre')}}">
     <a class="{{'active' if request.endpoint=='landing' else ''}}" href="{{url_for('landing')}}">{{t("home")}}</a>
     <a class="{{'active' if request.endpoint=='dashboard' else ''}}" href="{{url_for('dashboard')}}">{{t("command_centre")}}</a>
-    <a class="{{'active' if request.endpoint=='patients_page' else ''}}" href="{{url_for('patients_page')}}">{{t("patients")}}</a>
+    <a class="{{'active' if request.endpoint in ['patients_page','patient_new','patient_edit'] else ''}}" href="{{url_for('patients_page')}}">{{t("patients")}}</a>
     <a class="{{'active' if request.endpoint in ['ai_diagnostics','ai_diagnostics_module'] else ''}}" href="{{url_for('ai_diagnostics')}}">{{t("ai_diagnostics")}}</a>
     <a class="{{'active' if request.endpoint=='digital_twin' else ''}}" href="{{url_for('digital_twin',patient_id=default_twin_patient_id)}}">{{t("digital_twin")}}</a>
     <a class="{{'active' if request.endpoint in ['copilot_home','copilot_patient'] else ''}}" href="{{url_for('copilot_home')}}">{{t("care_copilot")}}</a>
     <a class="{{'active' if request.endpoint=='population' else ''}}" href="{{url_for('population')}}">{{t("population")}}</a>
     <a class="{{'active' if request.endpoint=='reports' else ''}}" href="{{url_for('reports')}}">{{t("reports")}}</a>
-    <a class="{{'active' if request.endpoint=='integrations' else ''}}" href="{{url_for('integrations')}}">{{t("integrations")}}</a>
+    <a class="{{'active' if request.endpoint in ['integrations','device_json_generator','device_adapter','device_adapter_process','device_adapter_record_download'] else ''}}" href="{{url_for('integrations')}}">{{t("integrations")}}</a>
     <a href="{{url_for('family_login')}}" target="_blank" rel="noopener">{{t("family")}} ↗</a>
   </nav>
   <div class="top-tools">

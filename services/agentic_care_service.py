@@ -258,17 +258,32 @@ def _recent_trend(patient_id):
 
 
 def _family_status(patient_id):
+    # Patient Management contacts are the current notification source of truth.
+    # Existing delegated family portal users remain a backwards-compatible fallback.
     family = query_db(
         """
-        SELECT id,display_name,relationship,consent_reference,access_scope,
-               consent_granted,expires_at,active
-        FROM family_users
-        WHERE patient_id=? AND active=1
-        ORDER BY id LIMIT 1
+        SELECT id,display_name,relationship,consent_reference,
+               'summary,alerts,messages,teleconsult' access_scope,
+               notification_consent consent_granted,expires_at,active
+        FROM patient_contacts
+        WHERE patient_id=? AND active=1 AND authorised_for_updates=1
+        ORDER BY notification_consent DESC,id LIMIT 1
         """,
         (patient_id,),
         one=True,
     )
+    if not family:
+        family = query_db(
+            """
+            SELECT id,display_name,relationship,consent_reference,access_scope,
+                   consent_granted,expires_at,active
+            FROM family_users
+            WHERE patient_id=? AND active=1
+            ORDER BY id LIMIT 1
+            """,
+            (patient_id,),
+            one=True,
+        )
     if not family:
         return {"eligible": False, "reason": "no_contact", "message": "No authorised family contact available", "contact": None}
 
@@ -1550,7 +1565,8 @@ def dashboard_agentic_cases(limit=12):
         LEFT JOIN agentic_event_context e ON e.run_id=r.id
         LEFT JOIN users u ON u.id=e.assigned_user_id
         LEFT JOIN agentic_workflow_metrics m ON m.run_id=r.id
-        WHERE r.severity IN ('critical','high','medium','low')
+        WHERE p.active=1
+          AND r.severity IN ('critical','high','medium','low')
           AND r.id IN (
             SELECT MAX(r2.id) FROM agentic_runs r2
             WHERE r2.severity IN ('critical','high','medium','low')

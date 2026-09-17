@@ -7,7 +7,9 @@ def population_metrics():
       SUM(CASE WHEN current_status='high' THEN 1 ELSE 0 END) high,
       SUM(CASE WHEN current_status='critical' THEN 1 ELSE 0 END) critical
       FROM patients WHERE active=1""",one=True)
-    alerts=query_db("SELECT COUNT(*) c FROM alerts WHERE status='open'",one=True)["c"]
-    tasks=query_db("SELECT COUNT(*) c FROM care_tasks WHERE status='open'",one=True)["c"]
+    alerts=query_db("""SELECT COUNT(*) c FROM alerts a JOIN patients p ON p.id=a.patient_id
+                       WHERE a.status='open' AND p.active=1""",one=True)["c"]
+    tasks=query_db("""SELECT COUNT(*) c FROM care_tasks t JOIN patients p ON p.id=t.patient_id
+                      WHERE t.status='open' AND p.active=1""",one=True)["c"]
     interventions=query_db("SELECT COUNT(*) c FROM care_events WHERE event_type IN ('agent_recommendation','human_action') AND created_at>=datetime('now','-30 days')",one=True)["c"]
     return {**dict(p),"open_alerts":alerts,"open_tasks":tasks,"interventions_30d":interventions}

@@ -1,13 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="top-hero compact">
-  <div>
-    <a href="{{url_for('patients_page')}}" class="back">← Patients</a>
-    <div class="eyebrow">{{p.external_ref}} · {{p.city}} · {{p.living_setting}}</div>
-    <h1>{{p.first_name}} {{p.last_name}}</h1>
-    <p>{{agent_summary}}</p>
+  <div class="patient-hero-identity">
+    {% if p.profile_photo_path %}<img class="patient-photo-lg" src="{{url_for('static',filename=p.profile_photo_path)}}" alt="{{p.first_name}} {{p.last_name}}">{% else %}<div class="patient-photo-lg patient-photo-fallback">{{p.first_name[0]}}{{p.last_name[0]}}</div>{% endif %}
+    <div>
+      <a href="{{url_for('patients_page')}}" class="back">← Patients</a>
+      <div class="eyebrow">{{p.external_ref}} · {{p.city or 'Location not set'}} · {{p.living_setting or 'Setting not set'}}</div>
+      <h1>{{p.first_name}} {{p.last_name}}</h1>
+      <p>{{agent_summary}}</p>
+      {% if not p.active %}<span class="status-chip archived">Archived · history retained</span>{% endif %}
+    </div>
   </div>
   <div class="button-row">
+    {% if current_user.role in ['admin','nurse'] %}<a class="outline-btn" href="{{url_for('patient_edit',patient_id=p.id)}}">✎ Edit Patient</a>{% endif %}
     <a class="outline-btn" href="{{url_for('landing')}}">⌂ Home</a>
     <a class="outline-btn" href="{{url_for('digital_twin',patient_id=p.id)}}">◆ 3D Digital Twin</a>
     <a class="outline-btn" href="{{url_for('copilot_patient',patient_id=p.id)}}">✦ Care Copilot</a>
@@ -17,12 +22,12 @@
 </div>
 
 <div class="patient-summary">
-  <div><small>SpO₂</small><strong>{{"%.1f"|format(latest.spo2 or 0)}}%</strong></div>
-  <div><small>Heart rate</small><strong>{{"%.0f"|format(latest.heart_rate or 0)}} bpm</strong></div>
-  <div><small>Respiration</small><strong>{{"%.0f"|format(latest.resp_rate or 0)}} /min</strong></div>
-  <div><small>Blood pressure</small><strong>{{"%.0f"|format(latest.bp_sys or 0)}} / {{"%.0f"|format(latest.bp_dia or 0)}}</strong></div>
-  <div><small>Activity</small><strong>{{"%.0f"|format(latest.activity or 0)}}</strong></div>
-  <div><small>Sleep</small><strong>{{"%.0f"|format(latest.sleep or 0)}}</strong></div>
+  <div><small>SpO₂</small><strong>{% if latest.spo2 is not none %}{{"%.1f"|format(latest.spo2)}}%{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.spo2.source if latest_meta.spo2 else 'No data'}}</span></div>
+  <div><small>Heart rate</small><strong>{% if latest.heart_rate is not none %}{{"%.0f"|format(latest.heart_rate)}} bpm{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.heart_rate.source if latest_meta.heart_rate else 'No data'}}</span></div>
+  <div><small>Respiration</small><strong>{% if latest.resp_rate is not none %}{{"%.0f"|format(latest.resp_rate)}} /min{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.resp_rate.source if latest_meta.resp_rate else 'No data'}}</span></div>
+  <div><small>Blood pressure</small><strong>{% if latest.bp_sys is not none and latest.bp_dia is not none %}{{"%.0f"|format(latest.bp_sys)}} / {{"%.0f"|format(latest.bp_dia)}}{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.bp_sys.source if latest_meta.bp_sys else 'No data'}}</span></div>
+  <div><small>Activity</small><strong>{% if latest.activity is not none %}{{"%.0f"|format(latest.activity)}}{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.activity.source if latest_meta.activity else 'No data'}}</span></div>
+  <div><small>Sleep</small><strong>{% if latest.sleep is not none %}{{"%.0f"|format(latest.sleep)}}{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.sleep.source if latest_meta.sleep else 'No data'}}</span></div>
 </div>
 
 <nav class="patient-360-tabs" aria-label="Patient 360 sections">
@@ -35,6 +40,16 @@
 </nav>
 
 {% if active_tab == 'overview' %}
+<section class="panel patient-master-summary">
+  <div class="panel-head"><div><div class="eyebrow">PATIENT MASTER</div><h2>Current patient information</h2></div></div>
+  <div class="patient-tab-summary">
+    <div><small>Date of birth</small><b>{{p.birth_date}}</b><span>{{p.sex or 'Sex not specified'}}</span></div>
+    <div><small>Contact</small><b>{{p.phone or 'No phone'}}</b><span>{{p.email or 'No email'}}</span></div>
+    <div><small>Care team</small><b>{{p.assigned_nurse_name or 'Nurse unassigned'}}</b><span>{{p.assigned_clinician_name or p.gp_name or 'Clinician unassigned'}}</span></div>
+    <div><small>Mobility</small><b>{{p.mobility_status or 'Not recorded'}}</b><span>{{p.city or 'Location not set'}}</span></div>
+    <div><small>Family / emergency</small><b>{{patient_contact.display_name if patient_contact else 'No authorised contact'}}</b><span>{{patient_contact.relationship if patient_contact else 'Not configured'}}</span></div>
+  </div>
+</section>
 <div class="grid-12">
   <section class="panel span-8">
     <div class="panel-head">
@@ -92,11 +107,141 @@
 {% elif active_tab == 'vitals' %}
 <section class="panel">
   <div class="panel-head">
-    <div><div class="eyebrow">MONITOR</div><h2>Continuous health signals</h2></div>
-    <span>Wearables · devices · smart home</span>
+    <div><div class="eyebrow">WEARABLE SYNC</div><h2>Patient-linked wearable data</h2></div>
+    {% if wearable_status.has_data %}<span class="badge">Latest {{wearable_status.latest.measured_at}}</span>{% endif %}
   </div>
-  <canvas id="vitalChart" height="85"></canvas>
+  {% if wearable_devices %}
+  <div class="wearable-grid">
+    {% for d in wearable_devices %}
+    <article class="wearable-card">
+      <div class="wearable-card-head"><b>{{d.provider_label}}</b><span class="wearable-status {{d.status}}">{{d.status|title}}</span></div>
+      <small>{{d.account_label or 'CareAI wearable companion'}}</small>
+      <p><strong>Device:</strong> {{d.device_name or 'Waiting for first sync'}}</p>
+      <p><strong>Last sync:</strong> {{d.last_synced_at or 'Not synced yet'}}</p>
+      {% if d.last_sync_summary %}<span>{{d.last_sync_summary}}</span>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="wearable-empty">No wearable is paired with this patient yet. Create a patient-bound token with <code>python scripts/pair_wearable.py {{p.external_ref}}</code>.</div>
+  {% endif %}
+
+  {% if wearable_status.has_data %}
+  <div class="wearable-source-line">
+    <b>Latest wearable source:</b> {{wearable_status.latest.source or wearable_status.latest.provider}}
+    {% if wearable_status.latest.device_name %} · {{wearable_status.latest.device_name}}{% endif %}
+    · {{wearable_status.measurement_count}} stored wearable measurements
+  </div>
+  {% else %}
+  <div class="wearable-empty compact">No recent wearable data available.</div>
+  {% endif %}
 </section>
+
+<section class="panel monitoring-panel">
+  <div class="panel-head monitoring-head">
+    <div><div class="eyebrow">MONITOR</div><h2>Continuous health signals</h2><p>Wearables · medical devices · ECG intervals · body composition · smart home</p></div>
+    <div class="monitor-download-actions">
+      <button class="outline-btn" type="button" id="monitorDownloadPdf">↓ Monitoring PDF</button>
+      <button class="outline-btn" type="button" id="monitorDownloadPng">↓ Chart PNG</button>
+      <button class="outline-btn" type="button" id="monitorDownloadCsv">↓ Data CSV</button>
+    </div>
+  </div>
+
+  <div class="monitor-toolbar" aria-label="Monitoring chart controls">
+    <label>
+      <span>Period</span>
+      <select id="monitorPeriod">
+        <option value="24h">Last 24 hours</option>
+        <option value="7d">Last 7 days</option>
+        <option value="30d">Last 30 days</option>
+        <option value="90d">Last 90 days</option>
+        <option value="all" selected>All available</option>
+        <option value="custom">Custom range</option>
+      </select>
+    </label>
+    <label>
+      <span>Source</span>
+      <select id="monitorSource"><option value="all">All sources</option></select>
+    </label>
+    <label>
+      <span>Chart style</span>
+      <select id="monitorChartStyle">
+        <option value="line">Line</option>
+        <option value="dotted">Dotted line</option>
+        <option value="bar">Bar</option>
+        <option value="points">Points</option>
+      </select>
+    </label>
+    <button class="outline-btn monitor-reset" type="button" id="monitorReset">Reset</button>
+  </div>
+
+  <div class="monitor-custom-range" id="monitorCustomRange" hidden>
+    <label><span>From</span><input id="monitorFrom" type="datetime-local"></label>
+    <label><span>To</span><input id="monitorTo" type="datetime-local"></label>
+  </div>
+
+  <details class="monitor-metric-picker" open>
+    <summary><span>Signals</span><small id="monitorSelectionSummary">Loading available signals…</small></summary>
+    <div class="monitor-picker-actions">
+      <button type="button" class="link-button" id="monitorSelectAll">Select all with data</button>
+      <button type="button" class="link-button" id="monitorClearMetrics">Clear</button>
+    </div>
+    <div id="monitorMetricGroups" class="monitor-metric-groups"></div>
+  </details>
+
+  <div class="monitor-chart-meta">
+    <span id="monitorRecordSummary">Loading monitoring data…</span>
+    <span id="monitorScaleHint">Each unit uses its own chart scale.</span>
+  </div>
+  <div class="monitor-chart-wrap"><canvas id="vitalChart" height="100"></canvas></div>
+  <div id="monitorEmpty" class="wearable-empty compact" hidden>No measurements match the selected filters.</div>
+
+  <div id="monitorRhythmPanel" class="monitor-rhythm-panel" hidden>
+    <div class="monitor-rhythm-head"><b>ECG rhythm labels</b><span>Categorical device/vendor labels are shown as events, not converted into numeric values.</span></div>
+    <div id="monitorRhythmEvents" class="monitor-rhythm-events"></div>
+  </div>
+</section>
+
+{% if ecg_recordings %}
+{% set ecg=ecg_recordings[0] %}
+<section class="panel ecg-patient-panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">ECG RECORDING</div><h2>Latest single-lead ECG</h2></div>
+    <div class="monitor-download-actions">
+      <a class="outline-btn" href="{{url_for('patient_ecg_report_pdf', patient_id=p.id, ecg_record_id=ecg.id)}}">↓ ECG PDF</a>
+      <span class="badge">{{ecg.lead_name}} · {{ecg.sampling_rate_hz}} Hz · {{ecg.duration_seconds}} s</span>
+    </div>
+  </div>
+  <div class="adapter-preview-summary ecg-patient-summary">
+    <div><small>Measured</small><b>{{ecg.measured_at}}</b><span>{{ecg.device_identifier}}</span></div>
+    <div><small>Heart rate</small><b>{{ecg.heart_rate_bpm|round|int if ecg.heart_rate_bpm is not none else '—'}} bpm</b><span>Stored in CareAI vitals</span></div>
+    <div><small>Source</small><b>{{ecg.source}}</b><span>Patient-linked ECG recording</span></div>
+  </div>
+  <div class="ecg-metric-grid">
+    <div><small>RR interval</small><b>{{ecg.rr_interval_ms|round|int if ecg.rr_interval_ms is not none else '—'}} ms</b></div>
+    <div><small>PR interval</small><b>{{ecg.pr_interval_ms|round|int if ecg.pr_interval_ms is not none else '—'}} ms</b></div>
+    <div><small>QRS duration</small><b>{{ecg.qrs_duration_ms|round|int if ecg.qrs_duration_ms is not none else '—'}} ms</b></div>
+    <div><small>QT interval</small><b>{{ecg.qt_interval_ms|round|int if ecg.qt_interval_ms is not none else '—'}} ms</b></div>
+    <div><small>QTc</small><b>{{ecg.qtc_ms|round|int if ecg.qtc_ms is not none else '—'}} ms</b></div>
+    <div><small>Rhythm label</small><b>{{ecg.rhythm_label or 'Not supplied'}}</b></div>
+  </div>
+  <div class="ecg-waveform-wrap patient"><canvas id="patientEcgChart" height="170"></canvas></div>
+  <p class="ecg-disclaimer">The displayed trace may be simulated or vendor-provided. CareAI does not infer an ECG diagnosis from this waveform.</p>
+
+  {% if ecg_recordings|length > 1 %}
+  <details class="schema-details ecg-history-details">
+    <summary>Recent ECG recordings ({{ecg_recordings|length}})</summary>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Measured</th><th>Device</th><th>Lead</th><th>Heart rate</th><th>QRS</th><th>QTc</th><th>Rhythm label</th><th>Report</th></tr></thead>
+        <tbody>{% for r in ecg_recordings %}<tr><td>{{r.measured_at}}</td><td>{{r.device_identifier}}</td><td>{{r.lead_name}}</td><td>{{r.heart_rate_bpm|round|int if r.heart_rate_bpm is not none else '—'}} bpm</td><td>{{r.qrs_duration_ms|round|int if r.qrs_duration_ms is not none else '—'}} ms</td><td>{{r.qtc_ms|round|int if r.qtc_ms is not none else '—'}} ms</td><td>{{r.rhythm_label or '—'}}</td><td><a class="link-button" href="{{url_for('patient_ecg_report_pdf', patient_id=p.id, ecg_record_id=r.id)}}">PDF</a></td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="panel">
   <div class="panel-head"><div><div class="eyebrow">RECENT MEASUREMENTS</div><h2>Vital-sign history</h2></div></div>
   <div class="table-wrap">
@@ -219,30 +364,404 @@
 (function () {
   const canvas = document.getElementById('vitalChart');
   if (!canvas || typeof Chart === 'undefined') return;
-  fetch("{{url_for('api_vitals',patient_id=p.id)}}")
-    .then(r => r.json())
-    .then(rows => {
-      const wanted = ['spo2','heart_rate','resp_rate','activity'];
-      const clean = rows.filter(x => wanted.includes(x.kind)).reverse();
-      const labels = [...new Set(clean.map(x => x.measured_at.slice(5,16).replace('T',' ')))];
-      function series(kind) {
-        const m = {};
-        clean.filter(x => x.kind === kind).forEach(x => m[x.measured_at.slice(5,16).replace('T',' ')] = x.value);
-        return labels.map(l => m[l] ?? null);
-      }
-      new Chart(canvas, {
-        type: 'line',
-        data: {labels, datasets: [
-          {label:'SpO₂', data:series('spo2'), tension:.35, borderWidth:2},
-          {label:'Heart rate', data:series('heart_rate'), tension:.35, borderWidth:2},
-          {label:'Resp rate', data:series('resp_rate'), tension:.35, borderWidth:2},
-          {label:'Activity', data:series('activity'), tension:.35, borderWidth:2}
-        ]},
-        options: {responsive:true, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}}, scales:{x:{grid:{display:false}}}}
+
+  const ui = {
+    period: document.getElementById('monitorPeriod'),
+    source: document.getElementById('monitorSource'),
+    style: document.getElementById('monitorChartStyle'),
+    custom: document.getElementById('monitorCustomRange'),
+    from: document.getElementById('monitorFrom'),
+    to: document.getElementById('monitorTo'),
+    metricGroups: document.getElementById('monitorMetricGroups'),
+    selectionSummary: document.getElementById('monitorSelectionSummary'),
+    recordSummary: document.getElementById('monitorRecordSummary'),
+    empty: document.getElementById('monitorEmpty'),
+    rhythmPanel: document.getElementById('monitorRhythmPanel'),
+    rhythmEvents: document.getElementById('monitorRhythmEvents'),
+    reset: document.getElementById('monitorReset'),
+    selectAll: document.getElementById('monitorSelectAll'),
+    clear: document.getElementById('monitorClearMetrics'),
+    pdf: document.getElementById('monitorDownloadPdf'),
+    png: document.getElementById('monitorDownloadPng'),
+    csv: document.getElementById('monitorDownloadCsv')
+  };
+
+  const preferred = ['spo2','heart_rate','resp_rate','bp_sys','bp_dia','activity'];
+  const palette = ['#36a2eb','#ff6384','#ff9f40','#4bc0c0','#9966ff','#ffcd56','#2f855a','#c05621','#805ad5','#2b6cb0','#b83280','#718096'];
+  let payload = {metrics: [], points: [], sources: []};
+  let chart = null;
+
+  function parseTime(value) {
+    if (!value) return null;
+    let text = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(text)) text = text.replace(' ', 'T');
+    let ms = Date.parse(text);
+    if (Number.isNaN(ms) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(text)) ms = Date.parse(text + 'Z');
+    return Number.isNaN(ms) ? null : ms;
+  }
+
+  function shortTime(value) {
+    const ms = parseTime(value);
+    if (ms === null) return String(value || '');
+    const d = new Date(ms);
+    return d.toLocaleString([], {month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+  }
+
+  function metricMap() {
+    return Object.fromEntries(payload.metrics.map(m => [m.key, m]));
+  }
+
+  function checkedMetrics() {
+    return [...ui.metricGroups.querySelectorAll('input[data-monitor-metric]:checked')].map(x => x.value);
+  }
+
+  function renderMetricPicker() {
+    const groups = {};
+    payload.metrics.forEach(metric => {
+      (groups[metric.group || 'Other'] ||= []).push(metric);
+    });
+    ui.metricGroups.innerHTML = '';
+    Object.entries(groups).forEach(([group, metrics]) => {
+      const block = document.createElement('div');
+      block.className = 'monitor-metric-group';
+      const heading = document.createElement('b');
+      heading.textContent = group;
+      block.appendChild(heading);
+      const grid = document.createElement('div');
+      grid.className = 'monitor-metric-grid';
+      metrics.forEach(metric => {
+        const label = document.createElement('label');
+        label.className = 'monitor-metric-chip' + (metric.count ? '' : ' no-data');
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = metric.key;
+        input.dataset.monitorMetric = '1';
+        input.disabled = !metric.count;
+        input.checked = metric.count > 0 && preferred.includes(metric.key);
+        input.addEventListener('change', updateChart);
+        const text = document.createElement('span');
+        const metricName = document.createElement('b');
+        metricName.textContent = metric.label;
+        const metricMeta = document.createElement('small');
+        metricMeta.textContent = (metric.unit || (metric.categorical ? 'event' : '')) + ' · ' + metric.count;
+        text.append(metricName, metricMeta);
+        label.append(input, text);
+        grid.appendChild(label);
       });
+      block.appendChild(grid);
+      ui.metricGroups.appendChild(block);
+    });
+    if (!checkedMetrics().length) {
+      const first = ui.metricGroups.querySelector('input[data-monitor-metric]:not(:disabled)');
+      if (first) first.checked = true;
+    }
+  }
+
+  function renderSources() {
+    const current = ui.source.value || 'all';
+    ui.source.innerHTML = '<option value="all">All sources</option>';
+    payload.sources.forEach(source => {
+      const option = document.createElement('option');
+      option.value = source;
+      option.textContent = source;
+      ui.source.appendChild(option);
+    });
+    ui.source.value = payload.sources.includes(current) ? current : 'all';
+  }
+
+  function periodBounds() {
+    const now = Date.now();
+    const value = ui.period.value;
+    if (value === 'all') return [null, null];
+    if (value === 'custom') {
+      return [ui.from.value ? new Date(ui.from.value).getTime() : null, ui.to.value ? new Date(ui.to.value).getTime() : null];
+    }
+    const hours = { '24h': 24, '7d': 24*7, '30d': 24*30, '90d': 24*90 }[value];
+    return [hours ? now - hours * 3600000 : null, now];
+  }
+
+  function filteredPoints(selected) {
+    const [from, to] = periodBounds();
+    const source = ui.source.value;
+    return payload.points.filter(point => {
+      if (!selected.includes(point.metric)) return false;
+      if (source !== 'all' && point.source !== source) return false;
+      const time = parseTime(point.measured_at);
+      if (from !== null && time !== null && time < from) return false;
+      if (to !== null && time !== null && time > to) return false;
+      return true;
+    });
+  }
+
+  function scaleId(unit) {
+    return 'y_' + String(unit || 'value').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+  }
+
+  function buildScales(selectedNumeric, meta) {
+    const units = [...new Set(selectedNumeric.map(key => meta[key]?.unit || 'value'))];
+    const scales = {
+      x: {grid:{display:false}, ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:12}}
+    };
+    units.forEach((unit, index) => {
+      scales[scaleId(unit)] = {
+        type: 'linear',
+        position: index % 2 ? 'right' : 'left',
+        display: index < 4,
+        beginAtZero: false,
+        grid: {drawOnChartArea: index === 0},
+        title: {display: index < 4, text: unit || 'Value'}
+      };
+    });
+    return scales;
+  }
+
+  function updateRhythm(points, selected) {
+    const events = points.filter(x => x.metric === 'rhythm_label');
+    const show = selected.includes('rhythm_label');
+    ui.rhythmPanel.hidden = !show;
+    if (!show) return;
+    ui.rhythmEvents.innerHTML = '';
+    if (!events.length) {
+      ui.rhythmEvents.innerHTML = '<span class="monitor-rhythm-empty">No rhythm labels match the selected period/source.</span>';
+      return;
+    }
+    events.slice(-30).reverse().forEach(event => {
+      const chip = document.createElement('div');
+      chip.className = 'monitor-rhythm-event';
+      const strong = document.createElement('b');
+      strong.textContent = event.value;
+      const small = document.createElement('small');
+      small.textContent = shortTime(event.measured_at) + ' · ' + event.source;
+      chip.append(strong, small);
+      ui.rhythmEvents.appendChild(chip);
+    });
+  }
+
+  function updateChart() {
+    const meta = metricMap();
+    const selected = checkedMetrics();
+    const points = filteredPoints(selected);
+    const numericKeys = selected.filter(key => !meta[key]?.categorical);
+    const numericPoints = points.filter(x => x.type !== 'categorical' && numericKeys.includes(x.metric));
+
+    ui.selectionSummary.textContent = selected.length + ' selected · ' + numericKeys.length + ' numeric' + (selected.includes('rhythm_label') ? ' · rhythm events' : '');
+    ui.recordSummary.textContent = points.length + ' matching records · ' + selected.length + ' signals';
+    updateRhythm(points, selected);
+
+    if (chart) { chart.destroy(); chart = null; }
+    ui.empty.hidden = numericPoints.length > 0 || (selected.includes('rhythm_label') && points.length > 0);
+    canvas.hidden = numericPoints.length === 0;
+    if (!numericPoints.length) return;
+
+    const labels = [...new Set(numericPoints.map(x => x.measured_at))].sort((a,b) => (parseTime(a) || 0) - (parseTime(b) || 0));
+    const style = ui.style.value;
+    const chartType = style === 'bar' ? 'bar' : 'line';
+    const datasets = numericKeys.map((key, index) => {
+      const metric = meta[key];
+      const lookup = new Map();
+      numericPoints.filter(x => x.metric === key).forEach(x => lookup.set(x.measured_at, Number(x.value)));
+      const colour = palette[index % palette.length];
+      return {
+        label: metric?.label || key,
+        data: labels.map(label => lookup.has(label) ? lookup.get(label) : null),
+        yAxisID: scaleId(metric?.unit || 'value'),
+        borderColor: colour,
+        backgroundColor: colour + '33',
+        borderWidth: style === 'points' ? 0 : 2,
+        borderDash: style === 'dotted' ? [5,5] : [],
+        pointRadius: style === 'points' ? 4 : (style === 'dotted' ? 2 : 1.5),
+        pointHoverRadius: 5,
+        showLine: style !== 'points',
+        tension: style === 'bar' || style === 'points' ? 0 : .28,
+        spanGaps: true
+      };
+    });
+
+    chart = new Chart(canvas, {
+      type: chartType,
+      data: {labels: labels.map(shortTime), datasets},
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: {mode:'index', intersect:false},
+        plugins: {
+          legend: {position:'bottom'},
+          tooltip: {callbacks: {
+            label: function(ctx) {
+              const key = numericKeys[ctx.datasetIndex];
+              const unit = meta[key]?.unit || '';
+              return ctx.dataset.label + ': ' + ctx.formattedValue + (unit ? ' ' + unit : '');
+            }
+          }}
+        },
+        scales: buildScales(numericKeys, meta)
+      }
+    });
+  }
+
+  function csvEscape(value) {
+    const text = String(value ?? '');
+    return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  }
+
+  function downloadCsv() {
+    const selected = checkedMetrics();
+    const meta = metricMap();
+    const rows = filteredPoints(selected);
+    if (!rows.length) return;
+    const lines = [['measured_at','signal','value','unit','source']];
+    rows.forEach(point => lines.push([point.measured_at, meta[point.metric]?.label || point.metric, point.value, point.unit || '', point.source || '']));
+    const csv = lines.map(row => row.map(csvEscape).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '{{p.external_ref}}_monitoring_' + new Date().toISOString().slice(0,10) + '.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function chartImageDataUrl() {
+    if (!chart || !canvas || canvas.hidden) return null;
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = canvas.width;
+    exportCanvas.height = canvas.height;
+    const ctx = exportCanvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    ctx.drawImage(canvas, 0, 0);
+    return exportCanvas.toDataURL('image/png', 1);
+  }
+
+  function downloadPng() {
+    const image = chartImageDataUrl();
+    if (!image) return;
+    const link = document.createElement('a');
+    link.href = image;
+    link.download = '{{p.external_ref}}_monitoring_' + new Date().toISOString().slice(0,10) + '.png';
+    link.click();
+  }
+
+  async function downloadPdf() {
+    const selected = checkedMetrics();
+    const rows = filteredPoints(selected);
+    if (!rows.length) {
+      window.alert('No monitoring records match the selected filters.');
+      return;
+    }
+
+    const originalText = ui.pdf.textContent;
+    ui.pdf.disabled = true;
+    ui.pdf.textContent = 'Preparing PDF…';
+    try {
+      const response = await fetch("{{url_for('patient_monitoring_report_pdf',patient_id=p.id)}}", {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          selected_metrics: selected,
+          period: ui.period.value,
+          source: ui.source.value,
+          from: ui.from.value ? new Date(ui.from.value).toISOString() : null,
+          to: ui.to.value ? new Date(ui.to.value).toISOString() : null,
+          chart_style: ui.style.value,
+          chart_image: chartImageDataUrl()
+        })
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || 'PDF generation failed');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = '{{p.external_ref}}_monitoring_report_' + new Date().toISOString().slice(0,10) + '.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      window.alert('The monitoring PDF could not be generated. Please try again.');
+    } finally {
+      ui.pdf.disabled = false;
+      ui.pdf.textContent = originalText;
+    }
+  }
+
+  function reset() {
+    ui.period.value = 'all';
+    ui.source.value = 'all';
+    ui.style.value = 'line';
+    ui.custom.hidden = true;
+    ui.from.value = '';
+    ui.to.value = '';
+    ui.metricGroups.querySelectorAll('input[data-monitor-metric]').forEach(input => {
+      input.checked = !input.disabled && preferred.includes(input.value);
+    });
+    if (!checkedMetrics().length) {
+      const first = ui.metricGroups.querySelector('input[data-monitor-metric]:not(:disabled)');
+      if (first) first.checked = true;
+    }
+    updateChart();
+  }
+
+  [ui.period, ui.source, ui.style, ui.from, ui.to].forEach(control => control.addEventListener('change', function () {
+    ui.custom.hidden = ui.period.value !== 'custom';
+    updateChart();
+  }));
+  ui.reset.addEventListener('click', reset);
+  ui.selectAll.addEventListener('click', function () {
+    ui.metricGroups.querySelectorAll('input[data-monitor-metric]:not(:disabled)').forEach(input => input.checked = true);
+    updateChart();
+  });
+  ui.clear.addEventListener('click', function () {
+    ui.metricGroups.querySelectorAll('input[data-monitor-metric]').forEach(input => input.checked = false);
+    updateChart();
+  });
+  ui.pdf.addEventListener('click', downloadPdf);
+  ui.csv.addEventListener('click', downloadCsv);
+  ui.png.addEventListener('click', downloadPng);
+
+  fetch("{{url_for('api_patient_monitoring_series',patient_id=p.id)}}")
+    .then(response => { if (!response.ok) throw new Error('Monitoring data unavailable'); return response.json(); })
+    .then(data => {
+      payload = data;
+      renderMetricPicker();
+      renderSources();
+      updateChart();
     })
-    .catch(() => { /* table remains available if chart data cannot be loaded */ });
+    .catch(() => {
+      ui.recordSummary.textContent = 'Chart data could not be loaded. The measurement table below remains available.';
+      ui.empty.hidden = false;
+      ui.empty.textContent = 'Monitoring chart data could not be loaded.';
+    });
 })();
 </script>
+{% if ecg_recordings %}
+<script>
+(function () {
+  const canvas = document.getElementById('patientEcgChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const ecg = {{ecg_recordings[0]|tojson}};
+  const rate = Number(ecg.sampling_rate_hz || 250);
+  const points = (ecg.waveform_samples || []).map((y, i) => ({x: i / rate, y: Number(y)}));
+  new Chart(canvas, {
+    type: 'line',
+    data: {datasets: [{label: ecg.lead_name || 'ECG', data: points, borderWidth: 1.5, pointRadius: 0, tension: 0}]},
+    options: {
+      animation: false, parsing: false, normalized: true, responsive: true, maintainAspectRatio: false,
+      plugins: {legend: {display: false}},
+      interaction: {mode: 'nearest', intersect: false},
+      scales: {
+        x: {type: 'linear', title: {display: true, text: 'Seconds'}, grid: {color: 'rgba(220,80,80,.10)'}},
+        y: {title: {display: true, text: ecg.amplitude_unit || 'mV'}, grid: {color: 'rgba(220,80,80,.14)'}}
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endif %}
 {% endblock %}

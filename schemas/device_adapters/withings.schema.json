@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "careai://schemas/device-adapters/withings/1.0",
+  "title": "CareAI Withings Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_id", "patient_id", "device_type", "device_identifier", "source", "measurement_timestamp", "measurements"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "record_id": {"type": "string", "minLength": 1, "maxLength": 160},
+    "patient_id": {"type": "string", "minLength": 1},
+    "device_type": {"const": "withings"},
+    "device_identifier": {"type": "string", "minLength": 1, "maxLength": 160},
+    "source": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": {"enum": ["simulated", "vendor_api", "ble_gateway", "manual_json", "api"]},
+        "name": {"type": "string", "minLength": 1}
+      }
+    },
+    "measurement_timestamp": {"type": "string", "format": "date-time"},
+    "measurements": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "dependentRequired": {
+        "systolic_bp": ["diastolic_bp"],
+        "diastolic_bp": ["systolic_bp"]
+      },
+      "properties": {
+        "systolic_bp": {
+          "type": "object",
+          "required": ["value", "unit"],
+          "properties": {"value": {"type": "number", "minimum": 50, "maximum": 300}, "unit": {"const": "mmHg"}}
+        },
+        "diastolic_bp": {
+          "type": "object",
+          "required": ["value", "unit"],
+          "properties": {"value": {"type": "number", "minimum": 30, "maximum": 200}, "unit": {"const": "mmHg"}}
+        },
+        "heart_rate": {
+          "type": "object",
+          "required": ["value", "unit"],
+          "properties": {"value": {"type": "number", "minimum": 20, "maximum": 250}, "unit": {"const": "bpm"}}
+        },
+        "weight": {
+          "type": "object",
+          "required": ["value", "unit"],
+          "properties": {"value": {"type": "number", "minimum": 2, "maximum": 350}, "unit": {"const": "kg"}}
+        },
+        "body_fat": {
+          "type": "object",
+          "required": ["value", "unit"],
+          "properties": {"value": {"type": "number", "minimum": 1, "maximum": 75}, "unit": {"const": "%"}}
+        }
+      }
+    }
+  }
+}

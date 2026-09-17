@@ -1,5 +1,6 @@
 import os, json, secrets
-from datetime import timedelta
+from datetime import datetime, timedelta
+from io import BytesIO
 
 try:
     from dotenv import load_dotenv
@@ -8,14 +9,54 @@ except Exception:
     # Shell environment variables still work if python-dotenv is unavailable.
     pass
 from functools import wraps
-from flask import (Flask, render_template, request, redirect, url_for, jsonify, flash, abort, session,
-                   send_from_directory, make_response)
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, abort, session, send_from_directory, send_file
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash
 
 from services.db import init_db, query_db, execute_db
+from services.patient_service import (
+    archive_patient as archive_patient_record,
+    assignment_options as patient_assignment_options,
+    audit_change_details as patient_audit_change_details,
+    create_patient as create_patient_record,
+    list_patients as list_patient_records,
+    normalise_patient_form,
+    patient_form_data,
+    patient_summary_counts,
+    possible_duplicates,
+    primary_contact as patient_primary_contact,
+    reactivate_patient as reactivate_patient_record,
+    update_patient as update_patient_record,
+    validate_patient_form,
+)
 from services.risk_engine import compute_all_risks, get_latest_vitals, latest_risks
 from services.simulator import tick_all_patients, run_named_scenario
+from services import wearable_sync
+from services.device_adapter_service import (
+    ADAPTERS as DEVICE_ADAPTERS,
+    MAX_JSON_BYTES as DEVICE_JSON_MAX_BYTES,
+    adapter_cards as device_adapter_cards,
+    adapter_config as device_adapter_config,
+    create_generated_record as create_device_generated_record,
+    default_generator_values as device_default_generator_values,
+    example_for as device_adapter_example,
+    ecg_recordings_for_patient,
+    get_record as get_device_adapter_record,
+    patient_options as device_adapter_patient_options,
+    preview_record as preview_device_adapter_record,
+    process_record as process_device_adapter_record,
+    record_failed_upload as record_failed_device_upload,
+    record_payload as device_adapter_record_payload,
+    records_for_adapter as device_adapter_records,
+    register_payload as register_device_adapter_payload,
+    schema_for as device_adapter_schema,
+)
+from services.monitoring_report_service import (
+    build_ecg_pdf,
+    build_monitoring_pdf,
+    filter_monitoring_points,
+    load_monitoring_points,
+)
 from services.fhir_service import patient_bundle
 from services.population_service import population_metrics
 from services.dashboard_metrics_service import (
@@ -40,8 +81,6 @@ from services.care_bot_service import (
     ui_strings as care_bot_ui_strings,
 )
 from services.diagnostics_service import analyse_demo
-from services.diagnostic_report import (build_pdf as build_report_pdf, filename_for as report_filename,
-                                        load_result as load_report_result, save_result as save_report_result)
 from services.agentic_care_service import (
     AGENT_CATALOG,
     EVENT_TYPES,
@@ -285,12 +324,12 @@ def dashboard():
     alerts = query_db("""
         SELECT a.*, p.first_name, p.last_name FROM alerts a
         JOIN patients p ON p.id=a.patient_id
-        WHERE a.status='open' ORDER BY a.created_at DESC LIMIT 8
+        WHERE a.status='open' AND p.active=1 ORDER BY a.created_at DESC LIMIT 8
     """)
     tasks = query_db("""
         SELECT t.*, p.first_name, p.last_name FROM care_tasks t
         JOIN patients p ON p.id=t.patient_id
-        WHERE t.status='open' ORDER BY
+        WHERE t.status='open' AND p.active=1 ORDER BY
         CASE t.priority WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC,
         t.created_at DESC LIMIT 8
     """)
@@ -308,7 +347,14 @@ def dashboard():
 @app.route("/patient/<int:patient_id>")
 @login_required
 def patient(patient_id):
-    p = query_db("SELECT * FROM patients WHERE id=?", (patient_id,), one=True)
+    p = query_db(
+        """SELECT p.*,n.display_name assigned_nurse_name,c.display_name assigned_clinician_name
+           FROM patients p
+           LEFT JOIN users n ON n.id=p.assigned_nurse_id
+           LEFT JOIN users c ON c.id=p.assigned_clinician_id
+           WHERE p.id=?""",
+        (patient_id,), one=True
+    )
     if not p:
         abort(404)
 
@@ -321,6 +367,9 @@ def patient(patient_id):
         "p": p,
         "active_tab": active_tab,
         "latest": get_latest_vitals(patient_id),
+        "latest_meta": wearable_sync.get_latest_vitals_meta(patient_id),
+        "wearable_devices": wearable_sync.get_patient_devices(patient_id),
+        "wearable_status": wearable_sync.get_patient_wearable_status(patient_id),
         "risks": latest_risks(patient_id),
         "conditions": query_db("SELECT * FROM conditions WHERE patient_id=? AND active=1", (patient_id,)),
         "meds": query_db("SELECT * FROM medications WHERE patient_id=? AND active=1 ORDER BY name", (patient_id,)),
@@ -329,9 +378,11 @@ def patient(patient_id):
         "timeline": query_db("SELECT * FROM care_events WHERE patient_id=? ORDER BY created_at DESC LIMIT 40", (patient_id,)),
         "notifications": query_db("SELECT * FROM notifications WHERE patient_id=? ORDER BY created_at DESC LIMIT 20", (patient_id,)),
         "vital_history": query_db("SELECT * FROM vitals WHERE patient_id=? ORDER BY measured_at DESC LIMIT 120", (patient_id,)),
+        "ecg_recordings": ecg_recordings_for_patient(patient_id),
         "device_events": query_db("SELECT * FROM device_events WHERE patient_id=? ORDER BY created_at DESC LIMIT 30", (patient_id,)),
         "alerts": query_db("SELECT * FROM alerts WHERE patient_id=? ORDER BY created_at DESC LIMIT 30", (patient_id,)),
         "agent_summary": summarize_patient(patient_id),
+        "patient_contact": patient_primary_contact(patient_id),
     }
     audit("VIEW_PATIENT_360", patient_id, f"tab={active_tab}")
     return render_template("patient.html", **data)
@@ -812,25 +863,9 @@ def ai_diagnostics_module(module):
             image_name = f.filename
             audit("AI_DIAGNOSTIC_DEMO", None, f"{module}:{f.filename}")
 
-    # Keep the finished result so its PDF report can be built on download.
-    save_report_result(result or demo_result)
-
     return render_template("ai_diagnostics.html", **_diagnostics_context(
         result=result, demo_result=demo_result, selected_module=module,
         image_name=image_name, error=error, rejection=rejection, wound_context=wound_context))
-
-
-@app.route("/ai-diagnostics/report/<run_id>.pdf")
-@login_required
-def ai_diagnostics_report(run_id):
-    """Download one AI analysis as a PDF report."""
-    result=load_report_result(run_id)
-    if not result: abort(404)
-    response=make_response(build_report_pdf(result, clinician=current_user.display_name))
-    response.headers["Content-Type"]="application/pdf"
-    response.headers["Content-Disposition"]=f'attachment; filename="{report_filename(result)}"'
-    audit("AI_REPORT_DOWNLOAD", None, f"{result.get('module')}:{run_id}")
-    return response
 
 
 @app.route("/diagnostics-image/<path:filename>")
@@ -1250,9 +1285,144 @@ def care_bot_handoff():
 @app.route("/patients")
 @login_required
 def patients_page():
-    patient_filter = normalise_patient_filter(request.args.get("filter"))
-    patients = patient_overview_rows(filter_key=patient_filter, limit=None)
-    return render_template("patients.html", patients=patients, patient_filter=patient_filter)
+    legacy_filter = normalise_patient_filter(request.args.get("filter")) if request.args.get("filter") else "all"
+    risk = (request.args.get("risk") or "all").strip().lower()
+    condition = (request.args.get("condition") or "").strip()
+    if legacy_filter in {"high_critical", "medium", "low"} and "risk" not in request.args:
+        risk = legacy_filter
+    elif legacy_filter == "copd" and not condition:
+        condition = "COPD"
+    status = (request.args.get("status") or "active").strip().lower()
+    q = (request.args.get("q") or "").strip()
+    try:
+        nurse_id = int(request.args.get("nurse_id") or 0) or None
+    except ValueError:
+        nurse_id = None
+    patients = list_patient_records(q=q, status=status, risk=risk, condition=condition, nurse_id=nurse_id)
+
+    # Preserve the exact semantics of the older fall-risk / medication filter links
+    # from the landing page while the new Patient Management search model is used.
+    if legacy_filter in {"fall_risk", "medication"} and not any(request.args.get(k) for k in ("q", "risk", "condition", "nurse_id", "status")):
+        allowed = {int(row["id"]) for row in patient_overview_rows(filter_key=legacy_filter, limit=None)}
+        patients = [row for row in patients if int(row["id"]) in allowed]
+
+    options = patient_assignment_options()
+    filters = {"q": q, "status": status, "risk": risk, "condition": condition, "nurse_id": nurse_id}
+    audit("VIEW_PATIENT_MANAGEMENT", details=json.dumps(filters))
+    return render_template(
+        "patients.html", patients=patients, summary=patient_summary_counts(),
+        filters=filters, options=options
+    )
+
+
+@app.route("/patients/new", methods=["GET", "POST"])
+@login_required
+@role_required("admin", "nurse")
+def patient_new():
+    form_data = normalise_patient_form(request.form) if request.method == "POST" else {
+        "country": "Netherlands", "preferred_language": "nl", "consent_monitoring": 1,
+        "contact_authorised": 0, "contact_notification_consent": 0,
+    }
+    errors = {}
+    duplicates = []
+    if request.method == "POST":
+        errors = validate_patient_form(form_data, creation=True)
+        duplicates = possible_duplicates(form_data)
+        if duplicates and not request.form.get("confirm_duplicate") and not errors:
+            flash("Possible duplicate found. Review the matching record, then submit again if this is a different patient. Re-select the photo if one was chosen.", "warning")
+        elif not errors:
+            try:
+                patient_id, external_ref, changes = create_patient_record(
+                    form_data, actor_id=current_user.id, actor_role=current_user.role,
+                    photo_file=request.files.get("profile_photo")
+                )
+            except ValueError as exc:
+                errors["profile_photo"] = str(exc)
+            except Exception as exc:
+                app.logger.exception("Patient creation failed")
+                errors["form"] = "Patient could not be created safely. No record was committed."
+            else:
+                audit("CREATE_PATIENT", patient_id, json.dumps({"role": current_user.role, **changes}))
+                flash(f"Patient {external_ref} created successfully.", "success")
+                return redirect(url_for("patient", patient_id=patient_id))
+    return render_template(
+        "patient_form.html", mode="create", patient=None, form_data=form_data, errors=errors,
+        duplicates=duplicates, options=patient_assignment_options(), can_edit_controlled=True
+    )
+
+
+@app.route("/patient/<int:patient_id>/edit", methods=["GET", "POST"])
+@login_required
+@role_required("admin", "nurse")
+def patient_edit(patient_id):
+    patient_row = query_db("SELECT * FROM patients WHERE id=?", (patient_id,), one=True)
+    if not patient_row:
+        abort(404)
+    if request.method == "GET":
+        form_data = patient_form_data(patient_id)
+        errors = {}
+    else:
+        form_data = normalise_patient_form(request.form)
+        # Controlled identifiers remain sourced from the database for Nurse edits.
+        if current_user.role != "admin":
+            form_data["first_name"] = patient_row["first_name"]
+            form_data["last_name"] = patient_row["last_name"]
+            form_data["birth_date"] = patient_row["birth_date"]
+            form_data["sex"] = patient_row["sex"] or ""
+        errors = validate_patient_form(form_data)
+        if not errors:
+            try:
+                changes = update_patient_record(
+                    patient_id, form_data, actor_id=current_user.id, actor_role=current_user.role,
+                    photo_file=request.files.get("profile_photo")
+                )
+            except ValueError as exc:
+                errors["profile_photo"] = str(exc)
+            except LookupError:
+                abort(404)
+            except Exception:
+                app.logger.exception("Patient update failed")
+                errors["form"] = "Patient changes could not be saved safely. No partial update was committed."
+            else:
+                if changes:
+                    audit("UPDATE_PATIENT", patient_id, json.dumps(patient_audit_change_details(changes, current_user.role), default=str))
+                    flash("Patient details updated. CareAI modules will use the updated master record immediately.", "success")
+                else:
+                    flash("No patient master-data changes were detected.", "info")
+                return redirect(url_for("patient", patient_id=patient_id))
+    return render_template(
+        "patient_form.html", mode="edit", patient=patient_row, form_data=form_data, errors=errors,
+        duplicates=[], options=patient_assignment_options(), can_edit_controlled=current_user.role == "admin"
+    )
+
+
+@app.route("/patient/<int:patient_id>/archive", methods=["POST"])
+@login_required
+@role_required("admin")
+def patient_archive(patient_id):
+    if not query_db("SELECT id FROM patients WHERE id=?", (patient_id,), one=True):
+        abort(404)
+    try:
+        archive_patient_record(patient_id, actor_id=current_user.id)
+    except ValueError as exc:
+        flash(str(exc), "warning")
+        return redirect(url_for("patient", patient_id=patient_id))
+    audit("ARCHIVE_PATIENT", patient_id, json.dumps({"role": current_user.role, "history_retained": True}))
+    flash("Patient archived. Clinical and workflow history has been retained.", "success")
+    return redirect(url_for("patients_page", status="archived"))
+
+
+@app.route("/patient/<int:patient_id>/reactivate", methods=["POST"])
+@login_required
+@role_required("admin")
+def patient_reactivate(patient_id):
+    if not query_db("SELECT id FROM patients WHERE id=?", (patient_id,), one=True):
+        abort(404)
+    reactivate_patient_record(patient_id, actor_id=current_user.id)
+    audit("REACTIVATE_PATIENT", patient_id, json.dumps({"role": current_user.role}))
+    flash("Patient reactivated and is available to active CareAI workflows again.", "success")
+    return redirect(url_for("patients_page"))
+
 
 @app.route("/reports")
 @login_required
@@ -1286,7 +1456,206 @@ def population():
 def integrations():
     items=query_db("SELECT * FROM device_integrations ORDER BY category,name")
     audit("VIEW_INTEGRATIONS")
-    return render_template("integrations.html", items=items)
+    return render_template("integrations.html", items=items, adapter_cards=device_adapter_cards())
+
+
+@app.route("/integrations/device-json-generator", methods=["GET", "POST"])
+@login_required
+@role_required("admin", "nurse", "gp")
+def device_json_generator():
+    selected_adapter = (request.values.get("device_type") or "generic_ble_glucometer").strip()
+    if selected_adapter not in DEVICE_ADAPTERS:
+        selected_adapter = "generic_ble_glucometer"
+
+    generated_record = None
+    preview_json = None
+    form_values = dict(request.form) if request.method == "POST" else device_default_generator_values(selected_adapter)
+    if request.method == "POST":
+        try:
+            result = create_device_generated_record(selected_adapter, request.form, current_user.id)
+            generated_record = get_device_adapter_record(result["record_id"])
+            preview_json = json.dumps(result["payload"], indent=2, ensure_ascii=False)
+            if result.get("duplicate"):
+                flash("This device JSON already exists. The existing record has been opened.", "info")
+            else:
+                flash("Device JSON generated and validated successfully.", "success")
+            audit("DEVICE_JSON_GENERATED", generated_record["patient_id"], f"{selected_adapter} record={generated_record['id']}")
+        except (ValueError, KeyError) as exc:
+            flash(str(exc), "danger")
+
+    adapter = device_adapter_config(selected_adapter)
+    example_json = json.dumps(device_adapter_example(selected_adapter), indent=2, ensure_ascii=False)
+    default_device_ids = {key: cfg["default_device_identifier"] for key, cfg in DEVICE_ADAPTERS.items()}
+    return render_template(
+        "device_json_generator.html",
+        adapters={key: device_adapter_config(key) for key in DEVICE_ADAPTERS},
+        selected_adapter=selected_adapter,
+        adapter=adapter,
+        patients=device_adapter_patient_options(),
+        form_values=form_values,
+        generated_record=generated_record,
+        preview_json=preview_json,
+        example_json=example_json,
+        default_device_ids=default_device_ids,
+    )
+
+
+@app.route("/integrations/device-adapters/<adapter_key>", methods=["GET", "POST"])
+@login_required
+@role_required("admin", "nurse", "gp")
+def device_adapter(adapter_key):
+    try:
+        adapter = device_adapter_config(adapter_key)
+    except KeyError:
+        abort(404)
+
+    if request.method == "POST":
+        upload = request.files.get("json_file")
+        if not upload or not upload.filename:
+            flash("Choose a JSON file to upload.", "danger")
+            return redirect(url_for("device_adapter", adapter_key=adapter_key))
+        filename = upload.filename
+        if not filename.lower().endswith(".json"):
+            record_id = record_failed_device_upload(
+                adapter_key, actor_user_id=current_user.id, original_filename=filename,
+                error_message="Only .json files are accepted.",
+            )
+            audit("DEVICE_JSON_UPLOAD_FAILED", None, f"{adapter_key} record={record_id}: wrong file type")
+            flash("Only .json files are accepted.", "danger")
+            return redirect(url_for("device_adapter", adapter_key=adapter_key, record_id=record_id))
+
+        raw = upload.stream.read(DEVICE_JSON_MAX_BYTES + 1)
+        if len(raw) > DEVICE_JSON_MAX_BYTES:
+            record_id = record_failed_device_upload(
+                adapter_key, actor_user_id=current_user.id, original_filename=filename,
+                error_message="JSON file is larger than the 1 MB adapter limit.",
+            )
+            audit("DEVICE_JSON_UPLOAD_FAILED", None, f"{adapter_key} record={record_id}: file too large")
+            flash("JSON file is larger than the 1 MB adapter limit.", "danger")
+            return redirect(url_for("device_adapter", adapter_key=adapter_key, record_id=record_id))
+
+        try:
+            text = raw.decode("utf-8")
+            payload = json.loads(text)
+            if not isinstance(payload, dict):
+                raise ValueError("Uploaded JSON must contain one device measurement object.")
+            result = register_device_adapter_payload(
+                adapter_key, payload, source_mode="upload", actor_user_id=current_user.id,
+                original_filename=filename,
+            )
+            record = get_device_adapter_record(result["record_id"])
+            if result.get("duplicate"):
+                if record["processing_status"] == "processed":
+                    flash("This measurement has already been processed. No duplicate clinical data was created.", "info")
+                else:
+                    flash("This JSON was already generated in CareAI. The existing record has been opened and is ready for processing.", "info")
+            else:
+                flash("JSON validated successfully. Review the measurements before processing.", "success")
+            audit("DEVICE_JSON_VALIDATED", record["patient_id"], f"{adapter_key} record={record['id']}")
+            return redirect(url_for("device_adapter", adapter_key=adapter_key, record_id=record["id"]))
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, KeyError) as exc:
+            message = "Invalid JSON encoding or structure." if isinstance(exc, (UnicodeDecodeError, json.JSONDecodeError)) else str(exc)
+            raw_text = raw.decode("utf-8", errors="replace")
+            record_id = record_failed_device_upload(
+                adapter_key, actor_user_id=current_user.id, original_filename=filename,
+                error_message=message, raw_text=raw_text,
+            )
+            audit("DEVICE_JSON_UPLOAD_FAILED", None, f"{adapter_key} record={record_id}: {message}")
+            flash(message, "danger")
+            return redirect(url_for("device_adapter", adapter_key=adapter_key, record_id=record_id))
+
+    preview = None
+    selected_record_id = request.args.get("record_id", type=int)
+    if selected_record_id:
+        try:
+            preview = preview_device_adapter_record(adapter_key, selected_record_id)
+        except (LookupError, ValueError):
+            abort(404)
+
+    records = device_adapter_records(adapter_key)
+    audit("VIEW_DEVICE_ADAPTER", None, adapter_key)
+    return render_template(
+        "device_adapter.html", adapter=adapter, records=records, preview=preview,
+        schema_json=json.dumps(device_adapter_schema(adapter_key), indent=2, ensure_ascii=False),
+    )
+
+
+@app.route("/integrations/device-adapters/<adapter_key>/record/<int:record_id>/process", methods=["POST"])
+@login_required
+@role_required("admin", "nurse", "gp")
+def device_adapter_process(adapter_key, record_id):
+    try:
+        result = process_device_adapter_record(adapter_key, record_id, current_user.id)
+        if result.get("already_processed"):
+            flash("This device record was already processed. No duplicate measurements were written.", "info")
+        else:
+            flash(f"Measurements saved for {result['patient_ref']} · {result['patient_name']}.", "success")
+        audit("DEVICE_ADAPTER_PROCESSED", result.get("patient_id"), f"{adapter_key} record={record_id}")
+    except KeyError:
+        abort(404)
+    except LookupError:
+        abort(404)
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        audit("DEVICE_ADAPTER_PROCESS_FAILED", None, f"{adapter_key} record={record_id}: {exc}")
+    return redirect(url_for("device_adapter", adapter_key=adapter_key, record_id=record_id))
+
+
+@app.route("/integrations/device-adapters/record/<int:record_id>/download")
+@login_required
+@role_required("admin", "nurse", "gp")
+def device_adapter_record_download(record_id):
+    row = get_device_adapter_record(record_id)
+    if not row:
+        abort(404)
+    try:
+        payload = device_adapter_record_payload(record_id)
+    except LookupError:
+        abort(404)
+    filename = row["original_filename"] or f"{row['adapter_key']}_{record_id}.json"
+    if not filename.lower().endswith(".json"):
+        filename += ".json"
+    body = json.dumps(payload, indent=2, ensure_ascii=False)
+    audit("DEVICE_JSON_DOWNLOADED", row["patient_id"], f"{row['adapter_key']} record={record_id}")
+    return app.response_class(
+        body, mimetype="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename.replace(chr(34), "")}"'},
+    )
+
+
+@app.route("/api/device-adapters/<adapter_key>/ingest", methods=["POST"])
+@login_required
+@role_required("admin", "nurse", "gp")
+def api_device_adapter_ingest(adapter_key):
+    """Programmatic ingestion path for a future BLE gateway/vendor connector.
+
+    The current demo uses session authentication. A production vendor connector
+    should replace this edge authentication without changing the adapter or
+    downstream CareAI measurement processing.
+    """
+    try:
+        device_adapter_config(adapter_key)
+    except KeyError:
+        return jsonify({"success": False, "error": "Unknown device adapter"}), 404
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"success": False, "error": "A JSON object is required"}), 400
+    try:
+        registered = register_device_adapter_payload(
+            adapter_key, payload, source_mode="api", actor_user_id=current_user.id, original_filename=None
+        )
+        processed = process_device_adapter_record(adapter_key, registered["record_id"], current_user.id)
+        audit("DEVICE_ADAPTER_API_INGEST", processed.get("patient_id"), f"{adapter_key} record={registered['record_id']}")
+        return jsonify({
+            "success": True, "record_id": registered["record_id"],
+            "duplicate_payload": bool(registered.get("duplicate")),
+            "already_processed": bool(processed.get("already_processed")),
+            "patient_id": processed.get("patient_ref") or payload.get("patient_id"),
+        })
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except LookupError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 404
 
 @app.route("/security")
 @login_required
@@ -1304,6 +1673,87 @@ def audit_view():
                      ORDER BY a.created_at DESC LIMIT 500""")
     return render_template("audit.html",rows=rows)
 
+def _wearable_api_token():
+    auth_header = request.headers.get("Authorization", "").strip()
+    if auth_header.lower().startswith("bearer "):
+        return auth_header[7:].strip()
+    return (
+        request.headers.get("X-CareAI-Wearable-Token")
+        or request.headers.get("X-CareAI-HealthKit-Token")
+        or ""
+    ).strip()
+
+
+def _healthkit_sync_response(expected_patient_id=None):
+    if os.getenv("CAREAI_WEARABLE_API_ENABLED", "1") != "1":
+        return jsonify({"success": False, "error": "Wearable API is disabled"}), 404
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"success": False, "error": "Invalid JSON payload"}), 400
+
+    installation_id = str(payload.get("installation_id") or "").strip()
+    if not installation_id:
+        return jsonify({"success": False, "error": "installation_id is required"}), 400
+
+    device = None
+    try:
+        device = wearable_sync.authenticate_device(
+            _wearable_api_token(),
+            "apple_watch",
+            installation_id,
+            device_id=str(payload.get("device_id") or "")[:200] or None,
+            device_name=str(payload.get("device") or "")[:150] or None,
+        )
+        if expected_patient_id is not None and int(device["patient_id"]) != int(expected_patient_id):
+            return jsonify({"success": False, "error": "Wearable credential is not assigned to this patient"}), 403
+
+        result = wearable_sync.ingest_apple_healthkit(device, payload)
+        compute_all_risks(result["patient_id"])
+
+        # API calls are not Flask-login sessions, so write a minimal system audit
+        # record directly. Do not log the token or the health payload.
+        execute_db(
+            "INSERT INTO audit_logs(user_id,action,patient_id,details) VALUES(NULL,?,?,?)",
+            (
+                "HEALTHKIT_INGEST",
+                result["patient_id"],
+                json.dumps({
+                    "provider": result["provider"],
+                    "inserted": result["inserted"],
+                    "updated": result["updated"],
+                    "duplicates": result["duplicates"],
+                }),
+            ),
+        )
+        return jsonify({"success": True, **result}), 200
+    except PermissionError as exc:
+        message = str(exc)
+        status = 403 if any(word in message.lower() for word in ("consent", "inactive", "another installation")) else 401
+        return jsonify({"success": False, "error": message}), status
+    except ValueError as exc:
+        if device is not None:
+            wearable_sync.record_sync_error(device["id"], str(exc))
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        if device is not None:
+            wearable_sync.record_sync_error(device["id"], "Unexpected server error")
+        app.logger.exception("Wearable HealthKit sync failed")
+        return jsonify({"success": False, "error": "Wearable sync failed"}), 500
+
+
+@app.route("/api/wearable/healthkit/sync", methods=["POST"])
+def api_wearable_healthkit_sync():
+    """Preferred patient-safe endpoint. The credential resolves the patient."""
+    return _healthkit_sync_response()
+
+
+@app.route("/api/patient/<int:patient_id>/wearable/healthkit", methods=["POST"])
+def api_healthkit_ingest_compat(patient_id):
+    """Backward-compatible path with patient/credential cross-checking."""
+    return _healthkit_sync_response(expected_patient_id=patient_id)
+
+
 @app.route("/api/patient/<int:patient_id>/vitals")
 @login_required
 def api_vitals(patient_id):
@@ -1311,6 +1761,275 @@ def api_vitals(patient_id):
                      WHERE patient_id=? ORDER BY measured_at DESC LIMIT 240""",(patient_id,))
     audit("API_READ_VITALS",patient_id)
     return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/patient/<int:patient_id>/monitoring-series")
+@login_required
+def api_patient_monitoring_series(patient_id):
+    """Return Patient 360 monitoring data without changing the legacy vitals API.
+
+    The response combines generic numeric vitals with ECG interval measurements.
+    Rhythm labels are included as categorical events so the Patient 360 chart can
+    display them safely without converting a clinical label into a numeric value.
+    """
+    patient_row = query_db("SELECT id FROM patients WHERE id=?", (patient_id,), one=True)
+    if not patient_row:
+        abort(404)
+
+    metric_meta = {
+        "spo2": {"label": "SpO₂", "unit": "%", "group": "Oxygen & breathing", "order": 10},
+        "heart_rate": {"label": "Heart rate", "unit": "bpm", "group": "Cardiovascular", "order": 20},
+        "resp_rate": {"label": "Resp rate", "unit": "/min", "group": "Oxygen & breathing", "order": 30},
+        "bp_sys": {"label": "BP systolic", "unit": "mmHg", "group": "Cardiovascular", "order": 40},
+        "bp_dia": {"label": "BP diastolic", "unit": "mmHg", "group": "Cardiovascular", "order": 50},
+        "temperature": {"label": "Temperature", "unit": "°C", "group": "General", "order": 60},
+        "glucose": {"label": "Glucose", "unit": "mmol/L", "group": "Metabolic", "order": 70},
+        "activity": {"label": "Activity", "unit": "score", "group": "Activity & recovery", "order": 80},
+        "sleep": {"label": "Sleep score", "unit": "score", "group": "Activity & recovery", "order": 90},
+        "weight": {"label": "Weight", "unit": "kg", "group": "Body composition", "order": 100},
+        "body_fat": {"label": "Body fat", "unit": "%", "group": "Body composition", "order": 110},
+        "rr_interval": {"label": "RR interval", "unit": "ms", "group": "ECG intervals", "order": 120},
+        "pr_interval": {"label": "PR interval", "unit": "ms", "group": "ECG intervals", "order": 130},
+        "qrs_duration": {"label": "QRS duration", "unit": "ms", "group": "ECG intervals", "order": 140},
+        "qt_interval": {"label": "QT interval", "unit": "ms", "group": "ECG intervals", "order": 150},
+        "qtc": {"label": "QTc", "unit": "ms", "group": "ECG intervals", "order": 160},
+        "rhythm_label": {"label": "Rhythm label", "unit": "", "group": "ECG intervals", "order": 170, "categorical": True},
+    }
+
+    # Keep enough history for useful filtering/download while avoiding an
+    # unbounded response for long-running deployments. The original /vitals
+    # endpoint remains untouched for backward compatibility.
+    vital_rows = query_db(
+        """SELECT id,kind,value,unit,source,measured_at FROM (
+               SELECT id,kind,value,unit,source,measured_at
+               FROM vitals WHERE patient_id=?
+               ORDER BY measured_at DESC,id DESC LIMIT 5000
+           ) recent
+           ORDER BY measured_at ASC,id ASC""",
+        (patient_id,),
+    )
+
+    points = []
+    counts = {}
+    sources = set()
+    for row in vital_rows:
+        item = dict(row)
+        kind = str(item.get("kind") or "").strip()
+        if not kind:
+            continue
+        unit = item.get("unit") or ""
+        source = item.get("source") or "unknown"
+        if kind not in metric_meta:
+            metric_meta[kind] = {
+                "label": kind.replace("_", " ").title(),
+                "unit": unit,
+                "group": "Other",
+                "order": 900,
+            }
+        elif unit and not metric_meta[kind].get("unit"):
+            metric_meta[kind]["unit"] = unit
+        points.append({
+            "metric": kind,
+            "value": item.get("value"),
+            "unit": unit or metric_meta[kind].get("unit", ""),
+            "source": source,
+            "measured_at": item.get("measured_at"),
+            "type": "numeric",
+        })
+        counts[kind] = counts.get(kind, 0) + 1
+        sources.add(source)
+
+    # Enhanced ECG data intentionally remains in ecg_recordings rather than
+    # duplicating interval/waveform values into the generic vitals table.
+    try:
+        ecg_rows = query_db(
+            """SELECT measured_at,source,device_identifier,rr_interval_ms,pr_interval_ms,
+                      qrs_duration_ms,qt_interval_ms,qtc_ms,rhythm_label
+               FROM ecg_recordings WHERE patient_id=?
+               ORDER BY measured_at ASC,id ASC LIMIT 1000""",
+            (patient_id,),
+        )
+    except Exception:
+        # Allows Patient 360 to continue working before migration 008 is run.
+        ecg_rows = []
+
+    ecg_map = (
+        ("rr_interval", "rr_interval_ms"),
+        ("pr_interval", "pr_interval_ms"),
+        ("qrs_duration", "qrs_duration_ms"),
+        ("qt_interval", "qt_interval_ms"),
+        ("qtc", "qtc_ms"),
+    )
+    for row in ecg_rows:
+        item = dict(row)
+        source = item.get("source") or item.get("device_identifier") or "ecg"
+        sources.add(source)
+        for metric, column in ecg_map:
+            value = item.get(column)
+            if value is None:
+                continue
+            points.append({
+                "metric": metric, "value": value, "unit": "ms", "source": source,
+                "measured_at": item.get("measured_at"), "type": "numeric",
+            })
+            counts[metric] = counts.get(metric, 0) + 1
+        rhythm = str(item.get("rhythm_label") or "").strip()
+        if rhythm:
+            points.append({
+                "metric": "rhythm_label", "value": rhythm, "unit": "", "source": source,
+                "measured_at": item.get("measured_at"), "type": "categorical",
+            })
+            counts["rhythm_label"] = counts.get("rhythm_label", 0) + 1
+
+    metrics = []
+    for key, meta in metric_meta.items():
+        metrics.append({
+            "key": key,
+            "label": meta["label"],
+            "unit": meta.get("unit", ""),
+            "group": meta.get("group", "Other"),
+            "order": meta.get("order", 999),
+            "categorical": bool(meta.get("categorical")),
+            "count": counts.get(key, 0),
+        })
+    metrics.sort(key=lambda item: (item["order"], item["label"]))
+
+    points.sort(key=lambda item: str(item.get("measured_at") or ""))
+    audit("API_READ_MONITORING_SERIES", patient_id)
+    return jsonify({
+        "patient_id": patient_id,
+        "metrics": metrics,
+        "points": points,
+        "sources": sorted(sources),
+    })
+
+
+@app.route("/patient/<int:patient_id>/monitoring-report.pdf", methods=["POST"])
+@login_required
+@role_required("admin", "nurse", "gp")
+def patient_monitoring_report_pdf(patient_id):
+    patient_row = query_db(
+        """SELECT p.*,n.display_name assigned_nurse_name,c.display_name assigned_clinician_name
+           FROM patients p
+           LEFT JOIN users n ON n.id=p.assigned_nurse_id
+           LEFT JOIN users c ON c.id=p.assigned_clinician_id
+           WHERE p.id=?""",
+        (patient_id,), one=True
+    )
+    if not patient_row:
+        abort(404)
+
+    body = request.get_json(silent=True) or {}
+    selected_metrics = [str(x)[:80] for x in (body.get("selected_metrics") or []) if str(x).strip()]
+    period = str(body.get("period") or "all")[:20]
+    source = str(body.get("source") or "all")[:200]
+    from_value = body.get("from")
+    to_value = body.get("to")
+    chart_style = str(body.get("chart_style") or "line")[:30]
+    chart_image = body.get("chart_image")
+
+    points = load_monitoring_points(patient_id)
+    filtered = filter_monitoring_points(
+        points,
+        selected_metrics=selected_metrics,
+        period=period,
+        source=source,
+        from_value=from_value,
+        to_value=to_value,
+    )
+    conditions = [
+        row["display"] for row in query_db(
+            "SELECT display FROM conditions WHERE patient_id=? AND active=1 ORDER BY display",
+            (patient_id,),
+        )
+    ]
+
+    pdf_bytes = build_monitoring_pdf(
+        patient=dict(patient_row),
+        points=filtered,
+        selected_metrics=selected_metrics,
+        period=period,
+        source=source,
+        from_value=from_value,
+        to_value=to_value,
+        chart_style=chart_style,
+        chart_image_data_url=chart_image,
+        generated_by=getattr(current_user, "display_name", None) or getattr(current_user, "email", None),
+        generated_role=getattr(current_user, "role", None),
+        conditions=conditions,
+    )
+    audit(
+        "EXPORT_MONITORING_PDF",
+        patient_id,
+        f"period={period};source={source};signals={','.join(selected_metrics[:30])};rows={len(filtered)}",
+    )
+    filename = f"{patient_row['external_ref']}_monitoring_report_{datetime.now().strftime('%Y-%m-%d')}.pdf"
+    return send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename,
+        max_age=0,
+    )
+
+
+@app.route("/patient/<int:patient_id>/ecg/<int:ecg_record_id>/report.pdf", methods=["GET"])
+@login_required
+@role_required("admin", "nurse", "gp")
+def patient_ecg_report_pdf(patient_id, ecg_record_id):
+    patient_row = query_db(
+        """SELECT p.*,n.display_name assigned_nurse_name,c.display_name assigned_clinician_name
+           FROM patients p
+           LEFT JOIN users n ON n.id=p.assigned_nurse_id
+           LEFT JOIN users c ON c.id=p.assigned_clinician_id
+           WHERE p.id=?""",
+        (patient_id,), one=True
+    )
+    if not patient_row:
+        abort(404)
+
+    ecg_row = query_db(
+        """SELECT * FROM ecg_recordings WHERE id=? AND patient_id=?""",
+        (ecg_record_id, patient_id), one=True
+    )
+    if not ecg_row:
+        abort(404)
+
+    ecg = dict(ecg_row)
+    try:
+        ecg["waveform_samples"] = json.loads(ecg.get("waveform_json") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        ecg["waveform_samples"] = []
+
+    conditions = [
+        row["display"] for row in query_db(
+            "SELECT display FROM conditions WHERE patient_id=? AND active=1 ORDER BY display",
+            (patient_id,),
+        )
+    ]
+
+    pdf_bytes = build_ecg_pdf(
+        patient=dict(patient_row),
+        ecg=ecg,
+        generated_by=getattr(current_user, "display_name", None) or getattr(current_user, "email", None),
+        generated_role=getattr(current_user, "role", None),
+        conditions=conditions,
+    )
+    audit(
+        "EXPORT_ECG_PDF",
+        patient_id,
+        f"ecg_record_id={ecg_record_id};device={ecg.get('device_identifier')};measured_at={ecg.get('measured_at')}",
+    )
+    measured = str(ecg.get("measured_at") or datetime.now().strftime("%Y-%m-%d"))[:10]
+    filename = f"{patient_row['external_ref']}_ECG_{measured}_record_{ecg_record_id}.pdf"
+    return send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename,
+        max_age=0,
+    )
+
 
 @app.route("/api/patient/<int:patient_id>/twin")
 @login_required
@@ -1378,4 +2097,8 @@ if __name__ == "__main__":
             compute_all_risks(p["id"])
     init_hospital_schema()
     start_optional_hospital_scheduler()
-    app.run(host="127.0.0.1", port=5002, debug=True)
+    app.run(
+        host=os.getenv("CAREAI_HOST", "127.0.0.1"),
+        port=int(os.getenv("CAREAI_PORT", "5002")),
+        debug=os.getenv("CAREAI_ENV", "development") == "development",
+    )

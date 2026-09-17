@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "record_id": "example-pulseox-001",
+  "patient_id": "NL-CR-001",
+  "device_type": "generic_ble_pulse_oximeter",
+  "device_identifier": "PULSEOX-SIM-001",
+  "source": {"type": "simulated", "name": "CareAI Device JSON Generator"},
+  "measurement_timestamp": "2026-09-15T12:15:00Z",
+  "measurements": {
+    "spo2": {"value": 97, "unit": "%"},
+    "pulse_rate": {"value": 72, "unit": "bpm"}
+  }
+}

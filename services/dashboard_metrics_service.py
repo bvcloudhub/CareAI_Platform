@@ -87,7 +87,7 @@ def patient_overview_rows(filter_key: str = "all", limit: int | None = None) -> 
     rows = _safe_rows(
         """
         SELECT p.id,p.external_ref,p.first_name,p.last_name,p.birth_date,p.city,
-               p.living_setting,p.current_status,
+               p.living_setting,p.current_status,p.profile_photo_path,p.assigned_nurse_id,
           (SELECT r.level FROM risk_scores r
              WHERE r.patient_id=p.id AND r.risk_type='overall'
              ORDER BY r.id DESC LIMIT 1) risk_level,

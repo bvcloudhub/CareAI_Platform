@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "record_id": "example-glucose-001",
+  "patient_id": "NL-CR-001",
+  "device_type": "generic_ble_glucometer",
+  "device_identifier": "GLUCO-SIM-001",
+  "source": {"type": "simulated", "name": "CareAI Device JSON Generator"},
+  "measurement_timestamp": "2026-09-15T12:00:00Z",
+  "measurements": {"glucose": {"value": 6.2, "unit": "mmol/L"}},
+  "context": {"meal_context": "random"}
+}

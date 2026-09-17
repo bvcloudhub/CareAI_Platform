@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head patient-form-head">
+  <div>
+    <a class="back" href="{{url_for('patients_page')}}">← Patients</a>
+    <div class="eyebrow">PATIENT MANAGEMENT</div>
+    <h1>{{'Add New Patient' if mode=='create' else 'Edit Patient'}}</h1>
+    {% if patient %}<p>{{patient.external_ref}} · System ID {{patient.id}} · identifiers are protected.</p>{% else %}<p>A stable CareAI patient reference will be generated automatically.</p>{% endif %}
+  </div>
+  {% if patient %}<a class="outline-btn" href="{{url_for('patient',patient_id=patient.id)}}">Open Patient 360 →</a>{% endif %}
+</div>
+
+{% if duplicates %}
+<section class="panel duplicate-warning">
+  <div class="eyebrow">POSSIBLE DUPLICATE</div>
+  <h2>Review before creating another patient</h2>
+  <p>A patient with the same name and date of birth already exists. Identical names are allowed, but review these records first.</p>
+  {% for d in duplicates %}<a href="{{url_for('patient',patient_id=d.id)}}" target="_blank" rel="noopener">{{d.external_ref}} · {{d.first_name}} {{d.last_name}} · {{d.birth_date}} · {{d.city or 'No city'}}</a>{% endfor %}
+</section>
+{% endif %}
+
+{% if errors.form %}<div class="flash danger" role="alert">{{errors.form}}</div>{% endif %}
+<form class="patient-form" method="post" enctype="multipart/form-data" novalidate>
+  {% if duplicates %}<input type="hidden" name="confirm_duplicate" value="1">{% endif %}
+
+  <section class="panel patient-form-section">
+    <div class="panel-head"><div><div class="eyebrow">PATIENT MASTER</div><h2>Personal information</h2></div></div>
+    {% if patient %}
+    <div class="protected-fields">
+      <div><small>Patient reference ID</small><b>{{patient.external_ref}}</b><span>Read-only</span></div>
+      <div><small>System ID</small><b>{{patient.id}}</b><span>Read-only</span></div>
+      <div><small>Created</small><b>{{patient.created_at or 'Legacy record'}}</b><span>Audit metadata</span></div>
+    </div>
+    {% endif %}
+    <div class="patient-form-grid">
+      <label><span>First name *</span><input name="first_name" value="{{form_data.first_name or ''}}" required {{'readonly' if mode=='edit' and not can_edit_controlled}}>{% if errors.first_name %}<small class="field-error">{{errors.first_name}}</small>{% endif %}</label>
+      <label><span>Last name *</span><input name="last_name" value="{{form_data.last_name or ''}}" required {{'readonly' if mode=='edit' and not can_edit_controlled}}>{% if errors.last_name %}<small class="field-error">{{errors.last_name}}</small>{% endif %}</label>
+      <label><span>Date of birth *</span><input type="date" name="birth_date" value="{{form_data.birth_date or ''}}" required {{'readonly' if mode=='edit' and not can_edit_controlled}}>{% if errors.birth_date %}<small class="field-error">{{errors.birth_date}}</small>{% endif %}</label>
+      <label><span>Sex</span><select name="sex" {{'disabled' if mode=='edit' and not can_edit_controlled}}><option value="">Not specified</option><option value="F" {{'selected' if form_data.sex=='F'}}>Female</option><option value="M" {{'selected' if form_data.sex=='M'}}>Male</option><option value="X" {{'selected' if form_data.sex=='X'}}>Other / X</option><option value="U" {{'selected' if form_data.sex=='U'}}>Unknown</option></select>{% if mode=='edit' and not can_edit_controlled %}<input type="hidden" name="sex" value="{{form_data.sex or ''}}">{% endif %}{% if errors.sex %}<small class="field-error">{{errors.sex}}</small>{% endif %}</label>
+      <label><span>Preferred language</span><select name="preferred_language"><option value="nl" {{'selected' if form_data.preferred_language=='nl'}}>Dutch</option><option value="en" {{'selected' if form_data.preferred_language=='en'}}>English</option><option value="de" {{'selected' if form_data.preferred_language=='de'}}>German</option><option value="fr" {{'selected' if form_data.preferred_language=='fr'}}>French</option><option value="other" {{'selected' if form_data.preferred_language=='other'}}>Other</option></select>{% if errors.preferred_language %}<small class="field-error">{{errors.preferred_language}}</small>{% endif %}</label>
+      <label class="photo-upload"><span>Profile photo</span><input type="file" name="profile_photo" accept="image/jpeg,image/png,image/webp"><small>JPG, PNG or WebP. Maximum 5 MB. Uploaded images are re-encoded securely.</small>{% if patient and patient.profile_photo_path %}<img src="{{url_for('static',filename=patient.profile_photo_path)}}" alt="Current patient profile photo">{% endif %}{% if errors.profile_photo %}<small class="field-error">{{errors.profile_photo}}</small>{% endif %}</label>
+    </div>
+  </section>
+
+  <section class="panel patient-form-section">
+    <div class="panel-head"><div><div class="eyebrow">CONTACT</div><h2>Contact and location</h2></div></div>
+    <div class="patient-form-grid">
+      <label><span>Phone</span><input name="phone" value="{{form_data.phone or ''}}">{% if errors.phone %}<small class="field-error">{{errors.phone}}</small>{% endif %}</label>
+      <label><span>Email</span><input type="email" name="email" value="{{form_data.email or ''}}">{% if errors.email %}<small class="field-error">{{errors.email}}</small>{% endif %}</label>
+      <label class="span-2"><span>Address</span><input name="address_line1" value="{{form_data.address_line1 or ''}}"></label>
+      <label><span>City</span><input name="city" value="{{form_data.city or ''}}"></label>
+      <label><span>Postal code</span><input name="postal_code" value="{{form_data.postal_code or ''}}"></label>
+      <label><span>Country</span>
+        {% set current_country = form_data.country or 'Netherlands' %}
+        {% set country_state = namespace(found=false) %}
+        {% for country in options.countries %}{% if current_country|lower == country|lower %}{% set country_state.found = true %}{% endif %}{% endfor %}
+        <select name="country">
+          {% if current_country and not country_state.found %}<option value="{{current_country}}" selected>{{current_country}} (existing value)</option>{% endif %}
+          {% for country in options.countries %}<option value="{{country}}" {{'selected' if current_country|lower == country|lower}}>{{country}}</option>{% endfor %}
+        </select>
+      </label>
+      <label><span>Living setting</span><select name="living_setting"><option value="">Not set</option>{% for option in ['home','home care','assisted living','hospital','other'] %}<option value="{{option}}" {{'selected' if form_data.living_setting==option}}>{{option|title}}</option>{% endfor %}</select></label>
+    </div>
+  </section>
+
+  <section class="panel patient-form-section">
+    <div class="panel-head"><div><div class="eyebrow">CLINICAL CONTEXT</div><h2>Patient-entered / clinician-maintained context</h2></div><span class="badge">Not dynamic vitals or AI scores</span></div>
+    <div class="patient-form-grid">
+      <label class="span-2"><span>Known conditions</span><textarea name="conditions" rows="5" placeholder="One condition per line">{{form_data.conditions or ''}}</textarea><small>Existing coded conditions remain linked to this patient. Removing a displayed condition marks it inactive rather than deleting its history.</small></label>
+      <label><span>Mobility status</span><input name="mobility_status" value="{{form_data.mobility_status or ''}}" placeholder="e.g. independent, walker, assisted"></label>
+      <label><span>Allergies / sensitivities</span><textarea name="allergies" rows="3">{{form_data.allergies or ''}}</textarea></label>
+      <label class="span-2"><span>Care / clinical notes</span><textarea name="clinical_notes" rows="4">{{form_data.clinical_notes or ''}}</textarea></label>
+    </div>
+  </section>
+
+  <section class="panel patient-form-section">
+    <div class="panel-head"><div><div class="eyebrow">CARE ASSIGNMENT</div><h2>Care team</h2></div></div>
+    <div class="patient-form-grid">
+      <label><span>GP / clinician display name</span><input name="gp_name" value="{{form_data.gp_name or ''}}"></label>
+      {% if current_user.role == 'admin' %}
+      <label><span>Assigned nurse</span><select name="assigned_nurse_id"><option value="">Unassigned</option>{% for u in options.nurses %}<option value="{{u.id}}" {{'selected' if form_data.assigned_nurse_id==u.id}}>{{u.display_name}}</option>{% endfor %}</select>{% if errors.assigned_nurse_id %}<small class="field-error">{{errors.assigned_nurse_id}}</small>{% endif %}</label>
+      <label><span>Assigned clinician</span><select name="assigned_clinician_id"><option value="">Unassigned</option>{% for u in options.clinicians %}<option value="{{u.id}}" {{'selected' if form_data.assigned_clinician_id==u.id}}>{{u.display_name}}</option>{% endfor %}</select>{% if errors.assigned_clinician_id %}<small class="field-error">{{errors.assigned_clinician_id}}</small>{% endif %}</label>
+      {% elif mode == 'create' %}
+      <div class="read-only-card"><small>Assigned nurse</small><b>{{current_user.display_name}}</b><span>Assigned automatically when you create the patient</span></div>
+      <div class="read-only-card"><small>Assigned clinician</small><b>Unassigned</b><span>Admin can assign a clinician after patient creation</span></div>
+      {% else %}
+      {% set nurse_name = namespace(value='Unassigned') %}
+      {% for u in options.nurses %}{% if patient.assigned_nurse_id == u.id %}{% set nurse_name.value = u.display_name %}{% endif %}{% endfor %}
+      {% set clinician_name = namespace(value='Unassigned') %}
+      {% for u in options.clinicians %}{% if patient.assigned_clinician_id == u.id %}{% set clinician_name.value = u.display_name %}{% endif %}{% endfor %}
+      <div class="read-only-card"><small>Assigned nurse</small><b>{{nurse_name.value}}</b><span>Admin-controlled</span></div>
+      <div class="read-only-card"><small>Assigned clinician</small><b>{{clinician_name.value}}</b><span>Admin-controlled</span></div>
+      {% endif %}
+      <label class="consent-check"><input type="checkbox" name="consent_monitoring" value="1" {{'checked' if form_data.consent_monitoring}}><span>Monitoring consent recorded</span><small>Changes are audit logged. This prototype does not claim regulatory certification.</small></label>
+    </div>
+  </section>
+
+  <section class="panel patient-form-section">
+    <div class="panel-head"><div><div class="eyebrow">FAMILY / EMERGENCY CONTACT</div><h2>Authorised contact</h2></div></div>
+    <div class="patient-form-grid">
+      <label><span>Name</span><input name="contact_name" value="{{form_data.contact_name or ''}}">{% if errors.contact_name %}<small class="field-error">{{errors.contact_name}}</small>{% endif %}</label>
+      <label><span>Relationship</span>
+        {% set current_relationship = form_data.contact_relationship or '' %}
+        {% set relationship_state = namespace(found=false) %}
+        {% for relationship in options.relationships %}{% if current_relationship|lower == relationship|lower %}{% set relationship_state.found = true %}{% endif %}{% endfor %}
+        <select name="contact_relationship">
+          <option value="" {{'selected' if not current_relationship}}>Select relationship</option>
+          {% if current_relationship and not relationship_state.found %}<option value="{{current_relationship}}" selected>{{current_relationship}} (existing value)</option>{% endif %}
+          {% for relationship in options.relationships %}<option value="{{relationship}}" {{'selected' if current_relationship|lower == relationship|lower}}>{{relationship}}</option>{% endfor %}
+        </select>
+      </label>
+      <label><span>Phone</span><input name="contact_phone" value="{{form_data.contact_phone or ''}}">{% if errors.contact_phone %}<small class="field-error">{{errors.contact_phone}}</small>{% endif %}</label>
+      <label><span>Email</span><input type="email" name="contact_email" value="{{form_data.contact_email or ''}}">{% if errors.contact_email %}<small class="field-error">{{errors.contact_email}}</small>{% endif %}</label>
+      <label class="consent-check"><input type="checkbox" name="contact_authorised" value="1" {{'checked' if form_data.contact_authorised}}><span>Authorised for care updates</span></label>
+      <label class="consent-check"><input type="checkbox" name="contact_notification_consent" value="1" {{'checked' if form_data.contact_notification_consent}}><span>Notification consent recorded</span>{% if errors.contact_notification_consent %}<small class="field-error">{{errors.contact_notification_consent}}</small>{% endif %}</label>
+      <label><span>Consent reference</span><input name="contact_consent_reference" value="{{form_data.contact_consent_reference or ''}}" placeholder="Optional local reference"></label>
+      <label><span>Consent expiry</span><input type="datetime-local" name="contact_expires_at" value="{{form_data.contact_expires_at[:16] if form_data.contact_expires_at else ''}}"></label>
+    </div>
+  </section>
+
+  <section class="panel protected-system-values">
+    <div class="panel-head"><div><div class="eyebrow">SYSTEM-GENERATED DATA</div><h2>Protected from this form</h2></div></div>
+    <p>Latest vitals, AI risk scores, Command Centre priority, wearable observations, Agentic Care status, consultation history and outcome metrics remain read-only here and continue to be managed by their existing CareAI modules.</p>
+  </section>
+
+  <div class="patient-form-actions">
+    <a class="outline-btn" href="{{url_for('patients_page')}}">Cancel</a>
+    <button type="submit">{{'Create Patient' if mode=='create' else 'Save Changes'}}</button>
+  </div>
+</form>
+{% endblock %}
