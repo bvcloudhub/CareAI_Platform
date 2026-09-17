@@ -8,7 +8,8 @@ except Exception:
     # Shell environment variables still work if python-dotenv is unavailable.
     pass
 from functools import wraps
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, abort, session, send_from_directory
+from flask import (Flask, render_template, request, redirect, url_for, jsonify, flash, abort, session,
+                   send_from_directory, make_response)
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash
 
@@ -40,6 +41,8 @@ from services.care_bot_service import (
     ui_strings as care_bot_ui_strings,
 )
 from services.diagnostics_service import analyse_demo
+from services.diagnostic_report import (build_pdf as build_report_pdf, filename_for as report_filename,
+                                        load_result as load_report_result, save_result as save_report_result)
 from services.agentic_care_service import (
     AGENT_CATALOG,
     EVENT_TYPES,
@@ -858,9 +861,25 @@ def ai_diagnostics_module(module):
             image_name = f.filename
             audit("AI_DIAGNOSTIC_DEMO", None, f"{module}:{f.filename}")
 
+    # Keep the finished result so its PDF report can be built on download.
+    save_report_result(result or demo_result)
+
     return render_template("ai_diagnostics.html", **_diagnostics_context(
         result=result, demo_result=demo_result, selected_module=module,
         image_name=image_name, error=error, rejection=rejection, wound_context=wound_context))
+
+
+@app.route("/ai-diagnostics/report/<run_id>.pdf")
+@login_required
+def ai_diagnostics_report(run_id):
+    """Download one AI analysis as a PDF report."""
+    result=load_report_result(run_id)
+    if not result: abort(404)
+    response=make_response(build_report_pdf(result, clinician=current_user.display_name))
+    response.headers["Content-Type"]="application/pdf"
+    response.headers["Content-Disposition"]=f'attachment; filename="{report_filename(result)}"'
+    audit("AI_REPORT_DOWNLOAD", None, f"{result.get('module')}:{run_id}")
+    return response
 
 
 @app.route("/diagnostics-image/<path:filename>")
@@ -1535,7 +1554,7 @@ if __name__ == "__main__":
     init_hospital_schema()
     start_optional_hospital_scheduler()
     app.run(
-    host=os.getenv("CAREAI_HOST", "0.0.0.0"),
+    host=os.getenv("CAREAI_HOST", "127.0.0.1"),
     port=int(os.getenv("CAREAI_PORT", "5002")),
     debug=os.getenv("CAREAI_ENV", "development") == "development",
 )
