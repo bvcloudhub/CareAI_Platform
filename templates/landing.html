@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block content %}
+{% if not current_user.is_authenticated %}
+<header class="public-topnav">
+  <a class="top-brand public-brand" href="{{url_for('landing')}}"><span>♥</span><b>Care<em>.AI</em></b><small>{{t("healthy_ageing")}}</small></a>
+  <nav>
+    <a href="#home">{{t("home")}}</a><a href="{{url_for('login')}}">{{t("command_centre")}}</a>
+    <a href="{{url_for('login')}}">{{t("patients")}}</a><a href="{{url_for('login')}}">{{t("ai_diagnostics")}}</a>
+    <a href="{{url_for('family_login')}}">{{t("family")}}</a><a href="{{url_for('login')}}">{{t("integrations")}}</a>
+  </nav>
+  <div class="public-actions">
+    <div class="lang-dd public-lang"><button>🌐 {{lang|upper}} ▾</button><div class="lang-menu">
+      <a href="{{url_for('set_language',lang_code='nl')}}">🇳🇱 Nederlands</a><a href="{{url_for('set_language',lang_code='en')}}">🇬🇧 English</a><a href="{{url_for('set_language',lang_code='de')}}">🇩🇪 Deutsch</a>
+    </div></div>
+    <a class="landing-login" href="{{url_for('login')}}">{{t("login")}}</a>
+  </div>
+</header>
+{% endif %}
+
+<section id="home" class="reference-hero">
+  <div class="reference-copy">
+    <div class="hero-logo">Care<span>.AI</span></div>
+    <h1>{{t("hero_title")}}</h1>
+    <p>{{t("hero_sub")}}</p>
+    <div class="landing-cta">
+      <a class="landing-btn coral" href="{{url_for('login')}}">{{t("start_demo")}} →</a>
+      <a class="landing-btn outline" href="#platform">▶ {{t("watch_video")}}</a>
+    </div>
+    <div class="mini-value-row">
+      <span>◉ {{t("early_detection")}}</span><span>✣ {{t("ai_support")}}</span>
+      <span>♧ {{t("better_coordination")}}</span><span>⌂ {{t("independent_living")}}</span>
+    </div>
+  </div>
+  <div class="hero-photo"><img src="{{url_for('static',filename='img/careai_hero_people.png')}}" alt="An older woman smiling with a nurse during a home care visit" width="868" height="536" loading="eager" decoding="async"></div>
+  <div class="hero-diagnostics">
+    <a class="hero-card-title hero-diagnostics-link" href="{{url_for('ai_diagnostics')}}" aria-label="Open AI Diagnostics">
+      <b>{{t("ai_diagnostics")|upper}}</b><small>{{t("ai_diag_sub")}}</small>
+    </a>
+    <a class="hero-diagnostic-option" href="{{url_for('ai_diagnostics_module',module='skin')}}"><span class="round-icon">✣</span><div><b>{{t("skin_ai")}}</b><small>{{t("skin_desc")}}</small></div><i>→</i></a>
+    <a class="hero-diagnostic-option" href="{{url_for('ai_diagnostics_module',module='ct')}}"><span class="round-icon">◉</span><div><b>{{t("lung_ai")}}</b><small>{{t("lung_desc")}}</small></div><i>→</i></a>
+    <a class="hero-diagnostic-option" href="{{url_for('ai_diagnostics_module',module='wound')}}"><span class="round-icon">◇</span><div><b>{{t("wound_ai")}}</b><small>{{t("wound_desc")}}</small></div><i>→</i></a>
+  </div>
+  <div class="hero-impact">
+    <h2>{{t("care_reimagined")}}</h2>
+    <ul><li>✓ {{t("safer_home")}}</li><li>✓ {{t("fewer_admissions")}}</li><li>✓ {{t("more_time")}}</li><li>✓ {{t("human_ai")}}</li></ul>
+    <div class="impact-metric"><b>24×7</b><span>{{t("healthy_ageing")}}</span></div>
+  </div>
+</section>
+
+<section class="reference-stats" aria-label="Live CareAI statistics">
+  <a class="reference-stat-link" href="{{url_for('patients_page',filter='all') if current_user.is_authenticated else url_for('login')}}" aria-label="Open active patients">
+    <b>{{dashboard_metrics.active_patients}}</b><span>{{t("active_patients")}}</span>
+  </a>
+  <a class="reference-stat-link" href="{{url_for('patients_page',filter='high_critical') if current_user.is_authenticated else url_for('login')}}" aria-label="Open High and Critical patients">
+    <b>{{dashboard_metrics.high_priority}}</b><span>{{t("high_priority")}}</span>
+  </a>
+  <a class="reference-stat-link" href="{{url_for('consultations_page',date='today') if current_user.is_authenticated and current_user.role in ['admin','nurse','gp'] else url_for('login')}}" aria-label="Open today's consultations">
+    <b>{{dashboard_metrics.todays_consultations}}</b><span>{{t("today_consults")}}</span>
+  </a>
+  <a class="reference-stat-link" href="{{url_for('clinician_inbox') if current_user.is_authenticated and current_user.role in ['admin','nurse','gp'] else url_for('login')}}" aria-label="Open new messages in the clinician inbox">
+    <b>{{dashboard_metrics.new_messages}}</b><span>{{t("new_messages")}}</span>
+  </a>
+  <blockquote>“Care today, a stronger tomorrow.”</blockquote>
+</section>
+
+<section id="platform" class="reference-dashboard">
+  <div class="ref-patients">
+    <div class="section-head"><h2>{{t("patient_overview")}}</h2><a href="{{url_for('patients_page',filter=patient_filter) if current_user.is_authenticated else url_for('login')}}">{{t("view_all")}} →</a></div>
+    <div class="filter-pills landing-patient-filters" role="navigation" aria-label="Filter patient preview">
+      <a class="{{'active' if patient_filter=='all' else ''}}" href="{{url_for('landing',filter='all')}}#platform">{{t("all")}}</a>
+      <a class="{{'active' if patient_filter=='high_critical' else ''}}" href="{{url_for('landing',filter='high_critical')}}#platform">High / Critical</a>
+      <a class="{{'active' if patient_filter=='medium' else ''}}" href="{{url_for('landing',filter='medium')}}#platform">Medium</a>
+      <a class="{{'active' if patient_filter=='low' else ''}}" href="{{url_for('landing',filter='low')}}#platform">Low</a>
+      <a class="{{'active' if patient_filter=='copd' else ''}}" href="{{url_for('landing',filter='copd')}}#platform">{{t("copd")}}</a>
+      <a class="{{'active' if patient_filter=='fall_risk' else ''}}" href="{{url_for('landing',filter='fall_risk')}}#platform">{{t("fall_risk")}}</a>
+      <a class="{{'active' if patient_filter=='medication' else ''}}" href="{{url_for('landing',filter='medication')}}#platform">{{t("medication")}}</a>
+    </div>
+    <div id="landingPatientRows">
+      {% for p in landing_patients %}
+      <a class="ref-patient-row" href="{{url_for('patient',patient_id=p.id) if current_user.is_authenticated else url_for('login')}}" aria-label="Open {{p.first_name}} {{p.last_name}} Patient 360">
+        <div class="mini-avatar">{{p.first_name[0]}}{{p.last_name[0]}}</div>
+        <div class="ref-patient-main"><small>{{p.external_ref}}</small><b>{{p.first_name}} {{p.last_name}}</b><span>{{p.city}}</span></div>
+        <span class="landing-risk-label {{p.priority}}">{{p.priority_label}}</span>
+        <span class="ref-row-open" aria-hidden="true">›</span>
+      </a>
+      {% else %}
+      <div class="empty light">No patients match the selected filter.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="ref-360">
+    {% if featured_patient %}
+    <div class="section-head"><h2>Patient 360° · <span>{{featured_patient.external_ref}} {{featured_patient.first_name}} {{featured_patient.last_name}}</span></h2><b class="live">{{t("live_data")}}</b></div>
+    <nav class="ref-tabs" aria-label="Open Patient 360 section">
+      <a class="active" href="{{url_for('patient',patient_id=featured_patient.id,tab='overview') if current_user.is_authenticated else url_for('login')}}">{{t("overview")}}</a>
+      <a href="{{url_for('patient',patient_id=featured_patient.id,tab='vitals') if current_user.is_authenticated else url_for('login')}}">{{t("vitals")}}</a>
+      <a href="{{url_for('patient',patient_id=featured_patient.id,tab='digital_twin') if current_user.is_authenticated else url_for('login')}}">{{t("digital_twin")}}</a>
+      <a href="{{url_for('patient',patient_id=featured_patient.id,tab='diagnostics') if current_user.is_authenticated else url_for('login')}}">{{t("diagnostics")}}</a>
+      <a href="{{url_for('patient',patient_id=featured_patient.id,tab='medication') if current_user.is_authenticated else url_for('login')}}">{{t("medication")}}</a>
+      <a href="{{url_for('patient',patient_id=featured_patient.id,tab='care_plan') if current_user.is_authenticated else url_for('login')}}">{{t("care_plan")}}</a>
+    </nav>
+    <div class="ref-twin">
+      <div class="home-map">
+        <div class="room bedroom">Bedroom <i>●</i></div><div class="room living">Living room <i>●</i></div><div class="room bathroom">Bathroom <i>●</i></div>
+        <div class="person-dot">{{featured_patient.first_name[0]}}</div>
+        <div class="demo-floorplan-label">Demo floorplan · latest device location: {{featured_patient.latest_location or 'not configured'}}</div>
+      </div>
+      <aside>
+        <div class="mini-vitals"><div><small>SpO₂</small><b>{{featured_patient.spo2_text}}</b></div><div><small>HR</small><b>{{featured_patient.hr_text}}</b></div><div><small>BP</small><b>{{featured_patient.bp_text}}</b></div><div><small>Resp</small><b>{{featured_patient.resp_text}}</b></div></div>
+        <h3>{{t("risk_analysis")}}</h3>
+        {% for r in featured_patient.risks %}<p>{{r.risk_type|replace('_',' ')|title}} <b>{{r.score}}</b></p>{% else %}<p><small>No risk scores configured.</small></p>{% endfor %}
+        <a href="{{url_for('patient',patient_id=featured_patient.id) if current_user.is_authenticated else url_for('login')}}">{{t("view_ai_explanation")}}</a>
+      </aside>
+    </div>
+    <div class="ref-actions"><a href="{{url_for('patient',patient_id=featured_patient.id) if current_user.is_authenticated else url_for('login')}}">☎ {{t("call_patient")}}</a><a href="{{url_for('patient',patient_id=featured_patient.id) if current_user.is_authenticated else url_for('login')}}">▣ {{t("start_video")}}</a><a href="{{url_for('patient',patient_id=featured_patient.id) if current_user.is_authenticated else url_for('login')}}">▤ {{t("open_record")}}</a></div>
+    {% else %}
+    <div class="empty light">No active patient is available for the Patient 360 preview.</div>
+    {% endif %}
+  </div>
+
+  <div class="ref-copilot">
+    <div class="section-head"><h2>Care.AI Copilot</h2></div>
+    <div class="copilot-toggle"><span class="active">{{t("care_team")}}</span><span>{{t("for_family")}}</span></div>
+    {% if featured_patient %}
+    <div class="copilot-bubble">✦ I can explain the database-backed status, risks and care context currently available for {{featured_patient.first_name}}.</div>
+    <div class="prompt-list"><span>{{t("current_status")}}</span><span>Current risks</span><span>{{t("fall_signals")}}</span><span>{{t("which_medication")}}</span><span>{{t("family_summary")}}</span></div>
+    <a class="fake-input landing-copilot-link" href="{{url_for('copilot_patient',patient_id=featured_patient.id) if current_user.is_authenticated else url_for('login')}}">{{t("ask_question")}} <b>➤</b></a>
+    {% else %}
+    <div class="copilot-bubble">No patient context is currently configured.</div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="landing-service-row">
+  <a href="{{url_for('login')}}"><b>▣ {{t("teleconsultation")}}</b><span>{{t("plan_video")}}</span>→</a>
+  <a href="{{url_for('family_login')}}"><b>♧ {{t("family_access")}}</b><span>{{t("family_desc")}}</span>→</a>
+  <a href="{{url_for('login')}}"><b>⛓ {{t("connect_systems")}}</b><span>{{t("integrations_desc")}}</span>→</a>
+</section>
+
+<footer class="reference-footer"><b>♥ Care.AI</b><span>🇪🇺 {{t("secure")}} · {{t("gdpr")}} · {{t("built_europe")}}</span><div><a>Privacy</a><a>Contact</a><a href="{{url_for('set_language',lang_code='nl')}}">NL</a><a href="{{url_for('set_language',lang_code='en')}}">EN</a><a href="{{url_for('set_language',lang_code='de')}}">DE</a></div></footer>
+
+
+{% endblock %}

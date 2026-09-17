@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top-hero">
+  <div><div class="eyebrow">CARE.AI COPILOT</div><h1>{{t('ask_anything')}}</h1>
+  <p>Answers come from the patient's Care.AI record: monitoring signals, 7-day trends, risk scores, alerts, open tasks and care events.</p></div>
+  <span class="copilot-ai-status {{'on' if copilot_ai.ai else ''}}"
+        title="{{ 'Questions the record cannot answer directly go to OpenAI with a pseudonymised copy of the record.' if copilot_ai.ai else 'Set CAREAI_USE_OPENAI=1 with OPENAI_API_KEY and OPENAI_MODEL to enable AI answers.' }}">
+    {% if copilot_ai.ai %}&#10003; Grounded AI on &middot; {{copilot_ai.model}}{% else %}Record lookup only{% endif %}
+  </span>
+</div>
+
+<div class="copilot-layout">
+  <aside class="copilot-patients">
+    <div class="copilot-search"><input id="patientSearch" placeholder="Search patient..." aria-label="Search patient"></div>
+    <div id="patientList">
+    {% for p in patients %}
+      <a href="{{url_for('copilot_patient',patient_id=p.id)}}" class="copilot-patient {{'selected' if selected and selected.id==p.id else ''}}" data-name="{{p.first_name}} {{p.last_name}} {{p.external_ref}}">
+        <span class="avatar">{{p.first_name[0]}}{{p.last_name[0]}}</span>
+        <div><b>{{p.first_name}} {{p.last_name}}</b><small>{{p.external_ref}} &middot; {{p.city}}</small></div>
+        <em class="{{p.current_status}}">{{p.current_status}}</em>
+      </a>
+    {% endfor %}
+    </div>
+  </aside>
+
+  <section class="copilot-main">
+    {% if selected %}
+      <div class="copilot-header">
+        <div><div class="eyebrow">{{selected.external_ref}}</div><h2>{{selected.first_name}} {{selected.last_name}}</h2></div>
+        <div class="quick-prompts">
+          <button type="button" data-prompt="Summarize current health status">Health summary</button>
+          <button type="button" data-prompt="What has changed over the last 7 days?">Recent changes</button>
+          <button type="button" data-prompt="Are there any open alerts?">Open alerts</button>
+          <button type="button" data-prompt="What is the fall risk and why?">Fall risk</button>
+          <button type="button" data-prompt="How is breathing and COPD risk?">Breathing</button>
+          <button type="button" data-prompt="Any medication adherence concerns?">Medication</button>
+          <button type="button" data-prompt="What should the care team review next?">Next action</button>
+          <button type="button" data-prompt="Draft a handover note for the next shift">Handover note</button>
+        </div>
+      </div>
+
+      <div class="chat-window" id="chatWindow" role="log" aria-live="polite">
+        {% if not messages %}
+        <div class="copilot-welcome">
+          <div class="copilot-orb">&#10022;</div>
+          <h3>Care.AI Copilot is ready</h3>
+          <p>Ask anything about {{selected.first_name}} - status, trends, alerts, conditions, readings, medication, falls, tasks or a handover note.</p>
+        </div>
+        {% endif %}
+        {% for m in messages %}
+          <div class="chat-msg {{m.sender_type}} {{'urgent' if m.safety_label=='urgent' else ''}}">
+            <small>{{ 'You' if m.sender_type == 'user' else 'Care.AI Copilot' }}</small>
+            <p>{{m.content}}</p>
+            <span>{{m.created_at}}</span>
+            {% if m.sender_type == 'assistant' and m.source %}<em class="copilot-source {{m.source}}">{{ source_labels.get(m.source, m.source) }}</em>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+
+      <form method="post" class="chat-compose" id="copilotForm"
+            data-ask-url="{{url_for('copilot_ask',patient_id=selected.id)}}"
+            data-label-user="You" data-label-assistant="Care.AI Copilot"
+            data-label-thinking="Checking the record..." data-label-error="Could not get an answer.">
+        <textarea name="question" id="questionInput" rows="2" placeholder="{{t('ask_care_ai')}} about {{selected.first_name}}..." required></textarea>
+        <button type="submit">Ask Copilot</button>
+      </form>
+      <div class="copilot-disclaimer">Decision support only. Record answers are exact lookups; AI answers are generated from a pseudonymised copy of this synthetic record and can still be wrong - check the source before acting.</div>
+    {% else %}
+      <div class="copilot-empty">
+        <div class="copilot-orb">&#10022;</div>
+        <h2>Select a patient</h2>
+        <p>Then ask Care.AI about their health status, deterioration risks, recent changes and care workflow.</p>
+      </div>
+    {% endif %}
+  </section>
+</div>
+<script src="{{url_for('static',filename='js/copilot.js')}}" defer></script>
+{% endblock %}

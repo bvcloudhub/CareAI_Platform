@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top-hero"><div><div class="eyebrow">SECURITY · PRIVACY · GOVERNANCE</div><h1>Designed around trust from day one</h1><p>Prototype controls that demonstrate the intended European governance model.</p></div></div>
+<div class="security-grid">
+  <article><b>01</b><h3>Data minimisation</h3><p>Only care-relevant fields are surfaced; demo data is synthetic.</p></article>
+  <article><b>02</b><h3>Purpose limitation</h3><p>Patient records carry a purpose code and lawful-basis field.</p></article>
+  <article><b>03</b><h3>Consent metadata</h3><p>Monitoring consent status and last update are stored per person.</p></article>
+  <article><b>04</b><h3>Role-based access</h3><p>Admin, nurse and GP roles constrain privileged actions.</p></article>
+  <article><b>05</b><h3>Auditability</h3><p>Patient views, exports, simulations and care actions are logged.</p></article>
+  <article><b>06</b><h3>EU residency intent</h3><p>Residency metadata is explicit; production deployment should enforce it technically.</p></article>
+  <article><b>07</b><h3>Human oversight</h3><p>Agents recommend and coordinate; clinical decisions remain with authorised humans.</p></article>
+  <article><b>08</b><h3>Retention metadata</h3><p>Records include retention dates to support lifecycle controls.</p></article>
+</div>
+<section class="panel dark-panel">
+  <div class="eyebrow coral-txt">PRODUCTION HARDENING</div><h2>Before real patient use</h2>
+  <div class="chip-grid dark"><span>SSO / OIDC</span><span>MFA</span><span>TLS everywhere</span><span>KMS/HSM</span><span>PostgreSQL RLS</span><span>SIEM</span><span>DPIA</span><span>DPO review</span><span>DSR tooling</span><span>Pen test</span><span>Backup/DR</span><span>ISO 27001 controls</span></div>
+</section>
+{% endblock %}

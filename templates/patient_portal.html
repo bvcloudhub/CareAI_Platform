@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="patient-portal-shell">
+  <header class="patient-portal-head">
+    <div class="brand"><span class="mark">♥</span> Care<span>.AI</span></div>
+    <div><b>Hello {{p.first_name}}</b><small>Your remote-care companion</small></div>
+  </header>
+
+  <div class="patient-portal-grid">
+    <section class="patient-health-card">
+      <div class="eyebrow">TODAY</div><h1>How you're doing</h1>
+      <div class="patient-vitals">
+        <div><small>Oxygen</small><b>{{"%.1f"|format(latest.spo2 or 0)}}%</b></div>
+        <div><small>Heart rate</small><b>{{"%.0f"|format(latest.heart_rate or 0)}}</b></div>
+        <div><small>Activity</small><b>{{"%.0f"|format(latest.activity or 0)}}</b></div>
+      </div>
+      <p>Your care team can review the same monitored information in Care.AI.</p>
+    </section>
+
+    <section class="patient-chat-card">
+      <div class="patient-chat-head"><div class="copilot-orb small">✦</div><div><h2>Care.AI Health Assistant</h2><p>Ask about your readings, falls, medication or care plan.</p></div></div>
+      <div class="chat-window patient-mode" id="patientChat">
+        {% for m in messages %}
+          <div class="chat-msg {{m.sender_type}} {{'urgent' if m.safety_label=='urgent' else ''}}">
+            <small>{{m.sender_type|title}}</small><p>{{m.content}}</p>
+          </div>
+        {% endfor %}
+      </div>
+      <form method="post" class="chat-compose patient-compose">
+        <textarea name="question" rows="2" placeholder="e.g. How am I doing today?"></textarea>
+        <button>Send</button>
+      </form>
+      <div class="patient-quick">
+        <button type="button" onclick="fillPatient('How am I doing today?')">How am I?</button>
+        <button type="button" onclick="fillPatient('What is my oxygen reading?')">My oxygen</button>
+        <button type="button" onclick="fillPatient('Did I have a fall?')">Fall</button>
+        <button type="button" onclick="fillPatient('Tell me about my medication')">Medication</button><button type="button" onclick="fillPatient('I want to talk to my nurse')">Talk to my nurse</button><button type="button" onclick="fillPatient('I want to talk to my GP')">Talk to my GP</button>
+      </div>
+    </section>
+
+    <section class="care-team-box">
+      <div class="eyebrow">HUMAN CARE TEAM</div><h2>Ask your nurse or GP</h2>
+      <p>Send a question directly into the Care.AI clinician inbox.</p>
+      <form method="post" action="{{url_for('patient_ask_care_team',patient_id=p.id)}}" class="care-form">
+        <select name="assigned_role"><option value="nurse">Nurse</option><option value="gp">GP</option></select>
+        <textarea name="question" rows="3" placeholder="Write your question..." required></textarea>
+        <button>Send to care team</button>
+      </form>
+      
+      <hr class="portal-divider">
+      <div class="eyebrow">VIDEO CARE</div><h2>Talk face-to-face</h2>
+      <p>Request a secure video consultation with your nurse or GP.</p>
+      <form method="post" action="{{url_for('request_teleconsult',patient_id=p.id)}}" class="care-form">
+        <select name="clinician_role"><option value="nurse">Nurse</option><option value="gp">GP</option></select>
+        <input name="reason" value="Patient requested remote consultation">
+        <button class="coral">▣ Start video consultation</button>
+      </form>
+      {% if upcoming %}
+      <div class="upcoming-consults">
+        {% for c in upcoming %}<a href="{{url_for('teleconsult_room',consult_id=c.id)}}"><b>{{c.clinician_role|upper}} video consultation</b><small>{{c.status}} · {{c.room_code}}</small></a>{% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="emergency-note">If you think this is an emergency, use your emergency plan or emergency services. Do not wait for a chat response.</div>
+    </section>
+  </div>
+</div>
+<script>
+function fillPatient(t){document.querySelector('.patient-compose textarea').value=t}
+const pc=document.getElementById('patientChat'); if(pc) pc.scrollTop=pc.scrollHeight;
+</script>
+{% endblock %}

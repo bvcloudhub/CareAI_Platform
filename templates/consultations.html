@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">VIRTUAL CARE</div>
+    <h1>{{"Today's consultations" if date_filter=='today' else 'Consultations'}}</h1>
+    <p>Teleconsultations recorded in the existing CareAI database.</p>
+  </div>
+  <div class="button-row">
+    <a class="outline-btn" href="{{url_for('consultations_page',date='today')}}">Today</a>
+    <a class="outline-btn" href="{{url_for('consultations_page',date='all')}}">All</a>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Patient</th><th>Status</th><th>Clinician</th><th>Reason</th><th>Scheduled / created</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for c in consultations %}
+        <tr>
+          <td><b>{{c.first_name}} {{c.last_name}}</b><small>{{c.external_ref}} · {{c.city}}</small></td>
+          <td><span class="badge">{{c.status|replace('_',' ')|title}}</span></td>
+          <td>{{c.clinician_name or c.clinician_role or 'Not assigned'}}</td>
+          <td>{{c.reason or 'Not specified'}}</td>
+          <td>{{c.scheduled_at or c.created_at}}</td>
+          <td><a href="{{url_for('teleconsult_room',consult_id=c.id)}}">Open →</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6">No consultations match this view.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

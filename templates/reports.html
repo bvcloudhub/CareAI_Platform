@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">{{t("reports")|upper}}</div><h1>{{t("reports")}}</h1><p>Operational and care-performance overview for the remote-care service.</p></div></div>
+<section class="kpis">
+<article><small>{{t("active_patients")}}</small><strong>{{metrics.total}}</strong><span>Care.AI population</span></article>
+<article><small>{{t("need_attention")}}</small><strong>{{(metrics.attention or 0)+(metrics.high or 0)+(metrics.critical or 0)}}</strong><span>Risk-led review</span></article>
+<article><small>{{t("open_care_tasks")}}</small><strong>{{metrics.open_tasks}}</strong><span>Care coordination</span></article>
+<article><small>{{t("interventions")}}</small><strong>{{metrics.interventions_30d}}</strong><span>Last 30 days</span></article>
+</section>
+<section class="panel value-panel"><div><div class="eyebrow">CARE.AI</div><h2>{{t("one_platform")}}</h2><p>Monitor → Understand → Predict → Act → Improve.</p></div></section>
+{% endblock %}

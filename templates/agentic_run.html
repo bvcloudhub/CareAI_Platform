@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{url_for('static',filename='css/agentic.css')}}">
+{% endblock %}
+{% block content %}
+<div class="agent-run-head">
+  <div>
+    <a class="back" href="{{url_for('agentic_care')}}">← Agentic Care</a>
+    <div class="eyebrow">LIVE AGENTIC WORKFLOW · RUN #{{run.id}}</div>
+    <h1>{{run.scenario}}</h1>
+    <p id="runSummary">{{run.summary}}</p>
+  </div>
+  <div class="agent-run-head-actions">
+    <span id="runStatus" class="agent-run-status {{run.status}}">{{run.status|replace('_',' ')|upper}}</span>
+    {% if run.status in ('completed','responding') %}<a class="outline-btn" href="{{url_for('dashboard')}}">Return to Command Centre →</a>{% endif %}
+  </div>
+</div>
+
+<div class="agentic-disclaimer" role="note">
+  <b>Human-in-the-loop</b>
+  <span>Care.AI can detect, explain, prioritise and prepare actions. Diagnosis, treatment, high-risk escalation, medication changes and consent-sensitive communication remain under human control. {{disclaimer}}</span>
+</div>
+
+<section class="workflow-progress-card">
+  <div class="progress-head">
+    <div><b id="progressLabel">0 / {{steps|length}} steps completed</b><span>Steps 1–6 auto-run, Step 7 requires nurse approval, then Steps 8–10 continue.</span></div>
+    <div class="button-row">
+      <button type="button" id="autoRunBtn" class="outline-btn">▶ Auto-run agents</button>
+      <button type="button" id="nextAgentBtn" class="outline-btn">Run next step →</button>
+    </div>
+  </div>
+  <div class="progress-track"><div id="progressFill" style="width:0%"></div></div>
+  <div class="mini-agent-track">
+    {% for s in steps %}
+      <button type="button" class="mini-agent {{s.status}}" data-target="step-{{s.step_no}}"><span>{{s.step_no}}</span><small>{{s.agent_name}}</small></button>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="agent-event-banner">
+  <div><small>PATIENT</small><b>{{run.first_name}} {{run.last_name}}</b><span>{{run.external_ref}} · {{run.city}}</span></div>
+  <div><small>EVENT</small><b>{{run.event_label or 'Patient event'}}</b><span>{{run.event_location or 'Location not recorded'}} · {{run.event_detected_at or run.started_at}}</span></div>
+  <div><small>CONFIDENCE</small><b id="confidenceValue">{{(run.sensor_confidence ~ '%') if run.sensor_confidence is not none else '—'}}</b><span>Synthetic sensor confidence</span></div>
+  <div><small>TRIAGE</small><b id="triageValue">{{run.severity|upper if run.severity!='pending' else '—'}}</b><span id="triageScoreLabel">{% if run.triage_score is not none %}Score {{run.triage_score}}/100{% else %}Human review required{% endif %}</span></div>
+  <div><small>RESPONSIBLE NURSE</small><b>{{run.assigned_professional or 'Responsible nurse'}}</b><span>Human approval owner</span></div>
+</section>
+
+<div class="agent-run-layout">
+  <section class="agent-timeline-panel">
+    <div class="panel-head"><div><div class="eyebrow">10-STEP RESPONSE</div><h2>What Care.AI is doing</h2></div></div>
+    <div class="agent-stepper" id="agentStepper">
+      {% for s in steps %}
+      <details id="step-{{s.step_no}}" class="agent-step agent-details {{s.status}}" data-step="{{s.step_no}}" {% if s.status in ('active','awaiting_approval') %}open{% endif %}>
+        <summary>
+          <div class="step-marker">{{s.step_no}}</div>
+          <div class="step-summary-main">
+            <div class="step-title"><h3>{{s.agent_name}}</h3><span class="step-status">{{s.status|replace('_',' ')}}</span></div>
+            <p>{{s.action_text}}</p>
+          </div>
+          <span class="detail-chevron" aria-hidden="true">⌄</span>
+        </summary>
+        <div class="agent-detail-content">
+          <div class="detail-grid">
+            <div><small>WHY THIS AGENT</small><p class="problem-text">{{s.problem_text}}</p></div>
+            <div><small>ACTION</small><p class="action-text">{{s.action_text}}</p></div>
+          </div>
+          <div class="agent-output"><small>EVIDENCE SUMMARY / GENERATED OUTPUT</small><p class="evidence-text">{{s.evidence_text}}</p></div>
+          <div class="agent-meta"><span>Started: <b class="started-at">{{s.started_at or '—'}}</b></span><span>Completed: <b class="completed-at">{{s.completed_at or '—'}}</b></span></div>
+          {% if s.requires_human_approval %}
+          <div id="approval-gate" class="human-approval approval-box" {% if s.status!='awaiting_approval' %}style="display:none"{% endif %}>
+            <div class="approval-copy"><b>Nurse approval required</b><span>Review the Copilot summary and evidence. No post-approval action can execute until an authorised nurse or admin explicitly approves.</span></div>
+            <div class="approval-forms">
+              <form method="post" action="{{url_for('approve_agentic_run',run_id=run.id)}}">
+                <textarea name="note" rows="2" maxlength="500" placeholder="Optional nurse note / rationale"></textarea>
+                <button class="coral">✓ Approve proposed response</button>
+              </form>
+              <form method="post" action="{{url_for('reject_agentic_run',run_id=run.id)}}">
+                <textarea name="note" rows="2" maxlength="500" placeholder="Reason for rejection or alternate human plan"></textarea>
+                <button class="outline-danger">Reject / stop workflow</button>
+              </form>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+  </section>
+
+  <aside class="agent-side">
+    <section class="context-card dark-agent">
+      <div class="eyebrow coral-txt">CLINICAL COPILOT SUMMARY</div>
+      <h2 id="sideTitle">Building evidence...</h2>
+      <ul id="liveEvidence"><li>Run the staged workflow to see evidence accumulate agent by agent.</li></ul>
+      <div class="copilot-rec"><b>Recommended next action</b><p id="recommendationText">Pending event verification and AI Triage.</p></div>
+    </section>
+
+    <section class="context-card">
+      <div class="context-card-head"><h3>Responsible professional</h3><span class="live-label">Assigned</span></div>
+      <div class="responsible-card"><span class="avatar">{{(run.assigned_professional or 'RN').split()[0][0]}}{{(run.assigned_professional or 'RN').split()[-1][0]}}</span><div><b>{{run.assigned_professional or 'Responsible nurse'}}</b><small>{{(run.assigned_role or 'nurse')|title}} · Human approval owner</small></div></div>
+      {% if approval %}<div class="approval-result {{approval.decision}}">{{approval.decision|upper}} · {{approval.reviewer_name}}{% if approval.note %}<small>{{approval.note}}</small>{% endif %}</div>{% endif %}
+    </section>
+
+    <section class="context-card" id="workflow-outputs">
+      <div class="context-card-head"><h3>Workflow outputs</h3><span id="workflowState">{{run.status|replace('_',' ')}}</span></div>
+      <div class="output-list">
+        <p><span>Priority</span><b id="priorityValue">Pending</b></p>
+        <p><span>Care task</span><b id="taskValue">Pending approval</b></p>
+        <p><span>Teleconsultation</span><b id="teleValue">Pending approval</b></p>
+        <p id="family-status"><span>Family update</span><b id="familyValue">Pending approval</b></p>
+        <p><span>Outcome record</span><b id="outcomeValue">Pending</b></p>
+      </div>
+      <div id="postApprovalLinks" class="post-approval-links"></div>
+    </section>
+
+    <section class="context-card outcome-card" id="outcomeCard" {% if not metrics or metrics.workflow_completion_status!='completed' %}style="display:none"{% endif %}>
+      <div class="eyebrow">OUTCOME AGENT</div><h3>Operational impact</h3>
+      <div class="outcome-metrics"><div><b id="responseMetric">{{metrics.response_time_seconds if metrics and metrics.response_time_seconds is not none else '—'}}{% if metrics and metrics.response_time_seconds is not none %}s{% endif %}</b><span>Response workflow</span></div><div><b>1</b><span>Coordinated intervention</span></div><div><b>HITL</b><span>Human-controlled</span></div></div>
+      <p id="operationalText">{{metrics.operational_impact if metrics else 'Metrics will appear when the workflow completes.'}}</p>
+      <a class="outline-btn" href="{{url_for('agentic_outcome',run_id=run.id)}}">Open Outcome Agent metrics →</a>
+    </section>
+  </aside>
+</div>
+
+<script>
+(function () {
+  const statusUrl = {{ url_for('agentic_run_status', run_id=run.id)|tojson }};
+  const advanceUrl = {{ url_for('advance_agentic_run', run_id=run.id)|tojson }};
+  const outcomeUrl = {{ url_for('agentic_outcome', run_id=run.id)|tojson }};
+  const commandCentreUrl = {{ url_for('dashboard')|tojson }};
+  const teleconsultBase = {{ url_for('teleconsult_room', consult_id=999999)|tojson }}.replace('999999','');
+  const autoRequested = new URLSearchParams(location.search).get('autorun') === '1';
+  let auto = false, timer = null, busy = false;
+  const autoButton = document.getElementById('autoRunBtn');
+  const nextButton = document.getElementById('nextAgentBtn');
+
+  async function getState() {
+    const response = await fetch(statusUrl, {headers: {'Accept': 'application/json'}});
+    if (!response.ok) throw new Error('Unable to load workflow status');
+    return response.json();
+  }
+
+  async function advance() {
+    if (busy) return;
+    busy = true;
+    try {
+      const response = await fetch(advanceUrl, {method: 'POST', headers: {'Accept': 'application/json'}});
+      if (!response.ok) throw new Error('Unable to advance workflow');
+      const state = await response.json();
+      render(state);
+      if (state.run.status === 'awaiting_approval' || state.run.status === 'completed' || state.run.status === 'rejected') stopAuto();
+    } catch (error) {
+      stopAuto();
+      document.getElementById('runSummary').textContent = error.message;
+    } finally { busy = false; }
+  }
+
+  function stopAuto() {
+    auto = false;
+    autoButton.textContent = '▶ Auto-run agents';
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+
+  function startAuto() {
+    auto = true;
+    autoButton.textContent = '■ Pause auto-run';
+    advance();
+    timer = setInterval(advance, 1350);
+  }
+
+  autoButton.addEventListener('click', function () { auto ? stopAuto() : startAuto(); });
+  nextButton.addEventListener('click', advance);
+  document.querySelectorAll('.mini-agent').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const details = document.getElementById(button.dataset.target);
+      details.open = true;
+      details.scrollIntoView({behavior: 'smooth', block: 'center'});
+    });
+  });
+
+  function actionByType(state, type) { return (state.actions || []).find(function (a) { return a.action_type === type; }); }
+
+  function render(state) {
+    document.getElementById('progressLabel').textContent = `${state.completed} / ${state.total} steps completed`;
+    document.getElementById('progressFill').style.width = state.percent + '%';
+    document.getElementById('runStatus').textContent = state.run.status.replaceAll('_', ' ').toUpperCase();
+    document.getElementById('runStatus').className = 'agent-run-status ' + state.run.status;
+    document.getElementById('runSummary').textContent = state.run.summary || '';
+    document.getElementById('workflowState').textContent = state.run.status.replaceAll('_', ' ');
+
+    state.steps.forEach(function (step) {
+      const element = document.querySelector(`[data-step="${step.step_no}"]`);
+      if (!element || !element.classList.contains('agent-details')) return;
+      element.className = 'agent-step agent-details ' + step.status;
+      element.querySelector('.step-status').textContent = step.status.replaceAll('_', ' ');
+      element.querySelector('.evidence-text').textContent = step.evidence_text || 'No output yet.';
+      element.querySelector('.started-at').textContent = step.started_at || '—';
+      element.querySelector('.completed-at').textContent = step.completed_at || '—';
+      const approval = element.querySelector('.approval-box');
+      if (approval) approval.style.display = step.status === 'awaiting_approval' ? 'block' : 'none';
+      const mini = document.querySelector(`.mini-agent[data-target="step-${step.step_no}"]`);
+      if (mini) mini.className = 'mini-agent ' + step.status;
+      if (step.status === 'active' || step.status === 'awaiting_approval') element.open = true;
+    });
+
+    const stepMap = Object.fromEntries(state.steps.map(function (step) { return [step.step_no, step]; }));
+    if (stepMap[3] && stepMap[3].status === 'completed') {
+      const confidence = state.run.sensor_confidence;
+      document.getElementById('confidenceValue').textContent = confidence == null ? '—' : confidence + '%';
+      document.getElementById('sideTitle').textContent = 'Why this event needs attention';
+    }
+    if (stepMap[5] && stepMap[5].status === 'completed') {
+      const severity = (state.run.severity || 'pending').toUpperCase();
+      const score = state.run.triage_score;
+      document.getElementById('triageValue').textContent = severity;
+      document.getElementById('triageScoreLabel').textContent = score == null ? 'Human review required' : `Score ${score}/100`;
+      document.getElementById('priorityValue').textContent = `${severity[0] + severity.slice(1).toLowerCase()} · ${score == null ? 'prioritised' : 'score ' + score + '/100'}`;
+    }
+    if (stepMap[6] && stepMap[6].status === 'completed') {
+      const severity = (state.run.severity || '').toLowerCase();
+      document.getElementById('recommendationText').textContent = severity === 'critical'
+        ? 'Immediate human review. Confirm patient status and decide virtual care or escalation according to protocol.'
+        : 'Human review is recommended. Verify the event and choose the appropriate follow-up according to protocol.';
+    }
+
+    const task = actionByType(state, 'care_task');
+    const tele = actionByType(state, 'teleconsultation');
+    const family = actionByType(state, 'family_notification');
+    document.getElementById('taskValue').textContent = task ? 'Created' : (state.run.status === 'rejected' ? 'Not created' : 'Pending approval');
+    document.getElementById('teleValue').textContent = tele ? 'Initiated · demo/mock' : (state.run.status === 'rejected' ? 'Not initiated' : 'Pending approval');
+    document.getElementById('familyValue').textContent = family ? (family.status === 'sent' ? 'Sent with consent' : 'Not sent · consent unavailable') : (state.run.status === 'rejected' ? 'Not sent' : 'Pending approval');
+    document.getElementById('outcomeValue').textContent = state.metrics && state.metrics.workflow_completion_status === 'completed' ? 'Captured' : (state.run.status === 'rejected' ? 'Stopped by human' : 'Pending');
+
+    const links = [];
+    if (tele && tele.reference_id) links.push(`<a class="outline-btn" href="${teleconsultBase}${tele.reference_id}">Open Teleconsultation →</a>`);
+    if (family) links.push(`<a class="outline-btn" href="#family-status">Family update: ${escapeHtml(family.status)}</a>`);
+    if (state.metrics && state.metrics.workflow_completion_status === 'completed') links.push(`<a class="outline-btn" href="${outcomeUrl}">Outcome metrics →</a>`);
+    if (state.run.status === 'completed') links.push(`<a class="outline-btn" href="${commandCentreUrl}">Return to Command Centre →</a>`);
+    document.getElementById('postApprovalLinks').innerHTML = links.join('');
+
+    if (state.metrics && state.metrics.workflow_completion_status === 'completed') {
+      document.getElementById('outcomeCard').style.display = 'block';
+      document.getElementById('responseMetric').textContent = (state.metrics.response_time_seconds ?? 0) + 's';
+      document.getElementById('operationalText').textContent = state.metrics.operational_impact || '';
+    }
+
+    const evidence = state.steps.filter(function (step) { return step.status === 'completed' && step.evidence_text; }).slice(-5);
+    document.getElementById('liveEvidence').innerHTML = evidence.length
+      ? evidence.map(function (step) { return `<li><b>${escapeHtml(step.agent_name)}:</b> ${escapeHtml(step.evidence_text)}</li>`; }).join('')
+      : '<li>Evidence will appear as agents complete.</li>';
+    nextButton.disabled = state.run.status === 'awaiting_approval' || state.run.status === 'completed' || state.run.status === 'rejected';
+    autoButton.disabled = state.run.status === 'awaiting_approval' || state.run.status === 'completed' || state.run.status === 'rejected';
+  }
+
+  function escapeHtml(value) {
+    const div = document.createElement('div'); div.textContent = value || ''; return div.innerHTML;
+  }
+
+  getState().then(function (state) {
+    render(state);
+    if (autoRequested && !['awaiting_approval','completed','rejected'].includes(state.run.status)) setTimeout(startAuto, 450);
+  }).catch(function (error) { document.getElementById('runSummary').textContent = error.message; });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,30 @@
+# Care.AI platform — requires CPython 3.10-3.13 (TensorFlow has no 3.14 wheels).
+Flask==3.0.3
+Flask-Login==0.6.3
+Werkzeug==3.0.3
+
+# Lung imaging diagnostics (services/lung_imaging_service.py)
+tensorflow==2.21.0
+tf-keras==2.21.0          # loads the legacy Keras 2 .h5 weights
+Pillow>=10.4.0
+numpy>=2.0
+h5py>=3.11                # reads the saved model_config for the Lambda patch
+
+# Wound AI (services/wound_imaging_service.py, wound_segmentation_service.py,
+# surgical_wound_risk_service.py). CPU wheels. The surgical ensemble's BiomedCLIP
+# base (~0.8 GB) is downloaded from HuggingFace on first use.
+torch==2.14.0
+torchvision==0.29.0
+opencv-python-headless==5.0.0.93
+open_clip_torch==3.3.0
+transformers==5.17.0   # BiomedCLIP's PubMedBERT text tower
+
+
+# Downloadable PDF reports for AI diagnostics (services/diagnostic_report.py)
+reportlab>=4.2
+
+# Hospital Hybrid AI (optional LLM + local ML/RAG + optional 06:00 scheduler)
+APScheduler==3.10.4
+openai>=2.0.0
+scikit-learn>=1.5.0
+python-dotenv>=1.0.1

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">{{t("patients")|upper}}</div>
+    <h1>{{t("patient_overview")}}</h1>
+    <p>{{t("one_platform")}}</p>
+  </div>
+</div>
+
+<section class="panel">
+  <nav class="filter-pills patient-page-filters" aria-label="Filter patients">
+    <a class="{{'active' if patient_filter=='all' else ''}}" href="{{url_for('patients_page',filter='all')}}">All</a>
+    <a class="{{'active' if patient_filter=='high_critical' else ''}}" href="{{url_for('patients_page',filter='high_critical')}}">High / Critical</a>
+    <a class="{{'active' if patient_filter=='medium' else ''}}" href="{{url_for('patients_page',filter='medium')}}">Medium</a>
+    <a class="{{'active' if patient_filter=='low' else ''}}" href="{{url_for('patients_page',filter='low')}}">Low</a>
+    <a class="{{'active' if patient_filter=='copd' else ''}}" href="{{url_for('patients_page',filter='copd')}}">COPD</a>
+    <a class="{{'active' if patient_filter=='fall_risk' else ''}}" href="{{url_for('patients_page',filter='fall_risk')}}">Fall risk</a>
+    <a class="{{'active' if patient_filter=='medication' else ''}}" href="{{url_for('patients_page',filter='medication')}}">Medication</a>
+  </nav>
+
+  <div class="patient-list" id="patientOverviewList">
+    {% for p in patients %}
+    <a href="{{url_for('patient',patient_id=p.id)}}" class="patient-row patient-row-link" aria-label="Open {{p.first_name}} {{p.last_name}} Patient 360">
+      <div class="avatar">{{p.first_name[0]}}{{p.last_name[0]}}</div>
+      <div class="patient-id">
+        <b>{{p.first_name}} {{p.last_name}}</b>
+        <small>{{p.external_ref}} · {{p.city}}</small>
+      </div>
+      <div>{{p.living_setting}}</div>
+      <div>
+        <span class="risk {{p.priority}}">{{p.priority|upper}} · {{p.risk_score or 0}}</span>
+      </div>
+      <div class="patient-tags-inline">
+        {% if p.has_copd %}<span>COPD</span>{% endif %}
+        {% if p.has_fall_risk %}<span>Fall risk</span>{% endif %}
+        {% if p.has_medication_risk %}<span>Medication</span>{% endif %}
+      </div>
+      <div class="arrow" aria-hidden="true">›</div>
+    </a>
+    {% else %}
+    <div class="empty light">No patients match the selected filter.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

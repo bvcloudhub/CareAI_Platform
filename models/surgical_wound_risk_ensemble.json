@@ -1,0 +1,87 @@
+{
+  "deployment_version": "surgical-ensemble-v9-v8a-demo-v1",
+  "status": "research_demo_not_externally_clinically_validated",
+  "v9_weight": 0.37,
+  "v8a_weight": 0.63,
+  "decision_threshold": 0.26,
+  "engineering_uncertainty_band": {
+    "lower": 0.2,
+    "upper": 0.32,
+    "note": "Engineering review flag only. This band was used for qualitative robustness review and is not a clinically validated probability interval."
+  },
+  "v9_pack": "surgical_wound_risk_v9_biomedclip_5fold_delta.pt",
+  "v8a_pack": "surgical_wound_risk_v8a_densenet121_5fold.pt",
+  "v9_folds": [
+    {
+      "fold": 1,
+      "head_key_count": 2,
+      "changed_encoder_key_count": 14,
+      "compact_size_mb": 27.0479,
+      "encoder_delta_size_mb": 27.0439
+    },
+    {
+      "fold": 2,
+      "head_key_count": 2,
+      "changed_encoder_key_count": 0,
+      "compact_size_mb": 0.0039,
+      "encoder_delta_size_mb": 0.0
+    },
+    {
+      "fold": 3,
+      "head_key_count": 2,
+      "changed_encoder_key_count": 0,
+      "compact_size_mb": 0.0039,
+      "encoder_delta_size_mb": 0.0
+    },
+    {
+      "fold": 4,
+      "head_key_count": 2,
+      "changed_encoder_key_count": 0,
+      "compact_size_mb": 0.0039,
+      "encoder_delta_size_mb": 0.0
+    },
+    {
+      "fold": 5,
+      "head_key_count": 2,
+      "changed_encoder_key_count": 0,
+      "compact_size_mb": 0.0039,
+      "encoder_delta_size_mb": 0.0
+    }
+  ],
+  "v8a_folds": [
+    {
+      "fold": 1,
+      "state_size_mb": 26.929
+    },
+    {
+      "fold": 2,
+      "state_size_mb": 26.929
+    },
+    {
+      "fold": 3,
+      "state_size_mb": 26.929
+    },
+    {
+      "fold": 4,
+      "state_size_mb": 26.929
+    },
+    {
+      "fold": 5,
+      "state_size_mb": 26.929
+    }
+  ],
+  "clinical_note": "AI-assisted image screening only. The ensemble score is not a calibrated clinical probability and does not diagnose surgical-site infection.",
+  "evaluation": {
+    "type": "development cross-fitted out-of-fold",
+    "samples": 549,
+    "elevated": 93,
+    "low": 456,
+    "sensitivity": 0.7956989247311828,
+    "specificity": 0.7478070175438597,
+    "roc_auc": 0.8546264855687605,
+    "pr_auc": 0.597870554729736,
+    "note": "Development OOF analysis only. Existing 137-image test split was not used.",
+    "source": "WoundAI runs/surgical_wound_v9_v8a_oof_ensemble/ensemble_summary.json"
+  },
+  "ported_from": "WoundAI runs/surgical_wound_ensemble_deployment/surgical_ensemble_deployment.json (absolute pack and fold-checkpoint paths replaced or removed)"
+}

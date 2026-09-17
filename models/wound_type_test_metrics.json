@@ -1,0 +1,61 @@
+{
+  "accuracy": 0.8032786885245902,
+  "macro_f1": 0.782804894914372,
+  "roc_auc_ovr_macro": 0.9390033920133974,
+  "confusion_matrix": [
+    [
+      37,
+      6,
+      0,
+      3
+    ],
+    [
+      4,
+      19,
+      6,
+      5
+    ],
+    [
+      0,
+      2,
+      36,
+      3
+    ],
+    [
+      2,
+      2,
+      3,
+      55
+    ]
+  ],
+  "per_class": {
+    "diabetic_ulcer": {
+      "precision": 0.8604651162790697,
+      "recall_sensitivity": 0.8043478260869565,
+      "specificity": 0.9562043795620438,
+      "f1": 0.8314606741573034,
+      "support": 46
+    },
+    "pressure_ulcer": {
+      "precision": 0.6551724137931034,
+      "recall_sensitivity": 0.5588235294117647,
+      "specificity": 0.9328859060402684,
+      "f1": 0.6031746031746031,
+      "support": 34
+    },
+    "surgical_wound": {
+      "precision": 0.8,
+      "recall_sensitivity": 0.8780487804878049,
+      "specificity": 0.9366197183098591,
+      "f1": 0.8372093023255814,
+      "support": 41
+    },
+    "venous_ulcer": {
+      "precision": 0.8333333333333334,
+      "recall_sensitivity": 0.8870967741935484,
+      "specificity": 0.9090909090909091,
+      "f1": 0.859375,
+      "support": 62
+    }
+  }
+}

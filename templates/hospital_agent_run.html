@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block extra_head %}<link rel="stylesheet" href="{{url_for('static',filename='css/hospital.css')}}">{% endblock %}
+{% block content %}
+<section class="hospital-page-head compact">
+  <div>
+    <a class="back" href="{{url_for('hospital_command_centre')}}">← Hospital AI</a>
+    <div class="eyebrow">ADMITTED PATIENT · HYBRID AGENTIC WORKFLOW</div>
+    <h1>{{run.first_name}} {{run.last_name}}</h1>
+    <p>{{run.summary}}</p>
+  </div>
+  <span class="hospital-run-status {{run.status}}">{{run.status|replace('_',' ')|upper}}</span>
+</section>
+
+<section class="hybrid-ai-strip">
+  <div><small>RULE SAFETY FLOOR</small><b>{{ctx.rule_score}}/100</b></div>
+  <div><small>ML ANOMALY</small><b>{{ctx.ml_score}}/100</b></div>
+  <div><small>HYBRID SCORE</small><b>{{ctx.hybrid_score}}/100</b></div>
+  <div><small>AI TRIAGE</small><b>{{ai.model if ai.configured else 'Safe fallback'}}</b></div>
+  <div><small>RAG</small><b>{{ai.rag_mode}}</b></div>
+  <div><small>HUMAN GATE</small><b>Mandatory</b></div>
+</section>
+
+<div class="hospital-progress">
+  {% set done=steps|selectattr('status','equalto','completed')|list|length %}
+  <div><b>{{done}} / {{steps|length}} steps completed</b><span>{{run.scenario|replace('Hospital EHR anomaly: ','')|replace('_',' ')|title}}</span></div>
+  <progress max="{{steps|length}}" value="{{done}}">{{done}}/{{steps|length}}</progress>
+</div>
+
+<div class="hospital-agent-layout">
+<section class="panel hospital-panel">
+  <div class="panel-head"><div><div class="eyebrow">CLICK ANY AGENT FOR EVIDENCE</div><h2>Hospital workflow</h2></div></div>
+  <div class="hospital-agent-steps">
+  {% for s in steps %}
+    <details class="hospital-agent-step {{s.status}}" {% if s.status in ['active','awaiting_approval','rejected'] %}open{% endif %}>
+      <summary><span class="step-marker">{{s.step_no}}</span><span><b>{{s.agent_name}}</b><small>{{s.status|replace('_',' ')|title}}</small></span><em>Details ▾</em></summary>
+      <div class="hospital-agent-detail">
+        <div><small>ACTION</small><p>{{s.action_text}}</p></div>
+        <div><small>EVIDENCE / OUTPUT</small><p>{{s.evidence_text}}</p></div>
+        <div class="hospital-time-row"><span>Started: {{s.started_at or '—'}}</span><span>Completed: {{s.completed_at or '—'}}</span></div>
+
+        {% if s.step_no == 7 and s.status == 'awaiting_approval' %}
+        <div class="hospital-human-gate">
+          <div><b>Responsible human review required</b><p>Steps 8–10 remain blocked. Approval can create a care task, initiate a demo specialist/virtual-care consultation and send a family update only when consent permits.</p></div>
+          {% if current_user.role in ['nurse','admin'] %}
+          <form method="post" class="hospital-approval-form">
+            <label for="review-note">Reviewer note (optional)</label>
+            <textarea id="review-note" name="note" maxlength="500" placeholder="Add clinical review context without entering unnecessary sensitive information."></textarea>
+            <div class="hospital-approval-actions">
+              <button class="landing-btn coral" formaction="{{url_for('hospital_agent_approve',run_id=run.id)}}">Approve proposed response</button>
+              <button class="outline-btn hospital-reject" formaction="{{url_for('hospital_agent_reject',run_id=run.id)}}">Reject / stop workflow</button>
+            </div>
+          </form>
+          {% else %}
+          <p><b>View-only:</b> an authorised nurse or administrator must approve or reject this workflow.</p>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </details>
+  {% endfor %}
+  </div>
+</section>
+
+<aside class="hospital-agent-side">
+  <section class="panel hospital-panel hospital-summary-card">
+    <div class="eyebrow">CLINICAL COPILOT</div><h2>Evidence-grounded summary</h2>
+    <p>{{run.summary}}</p>
+    <div class="hospital-recommendation"><b>Human review</b><p>Use this as decision support only. The responsible clinical professional confirms diagnosis, treatment and escalation under local hospital policy.</p></div>
+  </section>
+
+  <section class="panel hospital-panel">
+    <h3>Encounter context</h3>
+    <dl class="hospital-dl"><div><dt>Ward</dt><dd>{{ctx.ward}}</dd></div><div><dt>Room / Bed</dt><dd>{{ctx.room}} / {{ctx.bed}}</dd></div><div><dt>Encounter</dt><dd>{{ctx.encounter_ref}}</dd></div><div><dt>Assigned reviewer</dt><dd>{{ctx.assigned_professional or 'Responsible nurse'}}</dd></div></dl>
+  </section>
+
+  <section class="panel hospital-panel">
+    <h3>Workflow outputs</h3>
+    <div class="hospital-output-list">
+      <p><span>Human approval</span><b>{{approval.decision|title if approval else 'Pending'}}</b></p>
+      <p><span>Care coordination</span><b>{{'Completed' if run.status=='completed' else ('Stopped' if run.status=='rejected' else 'Blocked')}}</b></p>
+      <p><span>Teleconsultation</span><b>{{metrics.teleconsultation_status|replace('_',' ')|title if metrics else 'Not started'}}</b></p>
+      <p><span>Outcome record</span><b>{{'Captured' if outcome else 'Pending'}}</b></p>
+    </div>
+  </section>
+
+  {% if ai_results %}<section class="panel hospital-panel">
+    <div class="eyebrow">AI EXECUTION TRACE</div><h3>What actually ran</h3>
+    {% for r in ai_results %}<div class="ai-trace-row"><b>{{r.agent_name}}</b><span>{{r.execution_mode}}</span><small>Rules {{r.rule_score if r.rule_score is not none else '—'}} · ML {{r.ml_score if r.ml_score is not none else '—'}}{% if r.llm_model %} · {{r.llm_model}}{% endif %}</small></div>{% endfor %}
+  </section>{% endif %}
+
+  {% if outcome %}<section class="panel hospital-panel hospital-outcome-card">
+    <div class="eyebrow">OUTCOME AGENT</div><div class="hospital-outcome-metrics"><div><b>{{outcome.response_time_seconds if outcome.response_time_seconds is not none else '—'}}s</b><span>Response time</span></div><div><b>{{outcome.escalation_type|replace('_',' ')|title}}</b><span>Escalation</span></div></div><p>{{outcome.intervention}}</p><small>{{outcome.outcome}}</small>
+  </section>{% endif %}
+</aside>
+</div>
+{% endblock %}

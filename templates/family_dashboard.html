@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="family-shell">
+  <header class="family-head">
+    <div class="brand"><span class="mark">♥</span> Care<span>.AI</span></div>
+    <div><b>{{fam.display_name}}</b><small>{{fam.relationship}} · authorised family access</small><a href="{{url_for('family_logout')}}">Sign out</a></div>
+  </header>
+
+  <div class="family-hero">
+    <div><div class="eyebrow">FAMILY VIEW · {{p.external_ref}}</div><h1>{{p.first_name}} {{p.last_name}}</h1>
+      <p>A simple view of {{p.first_name}}'s monitored status, recent care activity and ways to contact the care team.</p>
+    </div>
+    <div class="family-consent"><b>✓ Delegated access active</b><small>{{fam.consent_reference}} · expires {{fam.expires_at[:10] if fam.expires_at else 'n/a'}}</small></div>
+  </div>
+
+  {% if family_notifications %}
+  <section class="family-agentic-update" aria-label="Latest Care.AI family update">
+    <div><div class="eyebrow">CARE TEAM UPDATE</div><h3>Nurse-reviewed follow-up is in progress</h3><p>{{family_notifications[0].message}}</p></div>
+    <span>✓ Consent-based update</span>
+  </section>
+  {% endif %}
+
+  <section class="family-vitals">
+    <article><small>Oxygen</small><strong>{{"%.1f"|format(latest.spo2 or 0)}}%</strong><span>Latest SpO₂</span></article>
+    <article><small>Heart rate</small><strong>{{"%.0f"|format(latest.heart_rate or 0)}}</strong><span>bpm</span></article>
+    <article><small>Blood pressure</small><strong>{{"%.0f"|format(latest.bp_sys or 0)}}/{{"%.0f"|format(latest.bp_dia or 0)}}</strong><span>mmHg</span></article>
+    <article><small>Activity</small><strong>{{"%.0f"|format(latest.activity or 0)}}</strong><span>daily score</span></article>
+  </section>
+
+  <div class="grid-12">
+    <section class="panel span-7">
+      <div class="panel-head"><div><div class="eyebrow">CARE.AI FAMILY ASSISTANT</div><h2>Ask about {{p.first_name}}</h2></div></div>
+      <div class="chat-window family-chat">
+        {% for m in messages[-10:] %}
+        <div class="chat-msg {{m.sender_type}}"><small>{{'Care.AI' if m.sender_type=='assistant' else m.sender_type|title}}</small><p>{{m.content}}</p></div>
+        {% else %}<div class="copilot-welcome"><div class="copilot-orb">✦</div><h3>{{t('ask_care_ai')}}</h3><p>Try: “How is {{p.first_name}} doing today?” or “Any recent care concerns?”</p></div>{% endfor %}
+      </div>
+      <form method="post" action="{{url_for('family_ask')}}" class="chat-compose">
+        <textarea name="question" rows="2" placeholder="{{t('ask_care_ai')}} about {{p.first_name}}..." required></textarea><button>Ask</button>
+      </form>
+      <div class="patient-quick">
+        <button type="button" onclick="familyPrompt('How is {{p.first_name}} doing today?')">Health summary</button>
+        <button type="button" onclick="familyPrompt('Any fall concerns?')">Fall status</button>
+        <button type="button" onclick="familyPrompt('Any medication concerns?')">Medication</button>
+      </div>
+    </section>
+
+    <section class="panel span-5">
+      <div class="panel-head"><div><div class="eyebrow">CONTACT CARE</div><h2>{{t('talk_to_care_team')}}</h2></div></div>
+      <form method="post" action="{{url_for('family_contact_care_team')}}" class="care-form">
+        <select name="assigned_role"><option value="nurse">Nurse</option><option value="gp">GP</option></select>
+        <textarea name="question" rows="3" placeholder="Ask a question about {{p.first_name}}..." required></textarea>
+        <button>Send to care team</button>
+      </form>
+      {% if 'teleconsult' in fam.access_scope %}
+      <hr>
+      <h3>{{t('video_consult')}}</h3>
+      <p>Request a video call with {{p.first_name}}'s nurse or GP.</p>
+      <form method="post" action="{{url_for('request_teleconsult',patient_id=p.id)}}" class="care-form">
+        <select name="clinician_role"><option value="nurse">Nurse</option><option value="gp">GP</option></select>
+        <input name="reason" value="Family remote-care check-in">
+        <button class="coral">▣ {{t('request_video')}}</button>
+      </form>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="grid-12">
+    <section class="panel span-6">
+      <div class="panel-head"><div><div class="eyebrow">LATEST CARE STATUS</div><h2>What the care team sees</h2></div></div>
+      {% set ns=namespace(overall=None) %}{% for r in risks %}{% if r.risk_type=='overall' %}{% set ns.overall=r %}{% endif %}{% endfor %}
+      {% if ns.overall %}<div class="family-risk {{ns.overall.level}}"><b>{{ns.overall.level|upper}}</b><h3>{{ns.overall.explanation}}</h3><p>{{ns.overall.evidence}}</p></div>{% endif %}
+      {% for t in tasks[:4] %}<div class="family-event"><b>{{t.task_type|replace('_',' ')|title}}</b><small>{{t.status}} · {{t.priority}}</small><p>{{t.rationale}}</p></div>{% endfor %}
+    </section>
+    <section class="panel span-6">
+      <div class="panel-head"><div><div class="eyebrow">RECENT ACTIVITY</div><h2>Care timeline</h2></div></div>
+      {% for n in family_notifications[:3] %}<div class="family-event family-notification-event"><b>Care.AI family update</b><small>{{n.created_at}} · {{n.status}}</small><p>{{n.message}}</p></div>{% endfor %}
+      {% for e in events[:6] %}<div class="family-event"><b>{{e.event_type|replace('_',' ')|title}}</b><small>{{e.created_at}}</small><p>{{e.description}}</p></div>{% endfor %}
+    </section>
+  </div>
+
+  <div class="family-privacy-note">Family members only see information included in the patient's delegated-access scope. Production should use strong identity, MFA/passkeys, consent lifecycle management and access auditing.</div>
+</div>
+<script>
+function familyPrompt(t){const x=document.querySelector('form[action="{{url_for("family_ask")}}"] textarea');if(x){x.value=t;x.focus();}}
+</script>
+{% endblock %}

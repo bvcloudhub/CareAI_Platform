@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block extra_head %}<link rel="stylesheet" href="{{url_for('static',filename='css/hospital.css')}}">{% endblock %}
+{% block content %}
+{% set a=ctx.admission %}
+<section class="hospital-page-head compact">
+  <div>
+    <a class="back" href="{{url_for('hospital_command_centre')}}">← Hospital AI</a>
+    <div class="eyebrow">{{a.encounter_ref}} · {{a.ward}} · ROOM {{a.room}} · BED {{a.bed}}</div>
+    <h1>{{a.first_name}} {{a.last_name}}</h1>
+    <p>{{a.admission_reason}} · Attending: {{a.attending_physician}}</p>
+  </div>
+  <a class="outline-btn" href="{{url_for('patient',patient_id=a.patient_id)}}">Open Patient 360</a>
+</section>
+
+<div class="hospital-detail-grid">
+<section class="panel hospital-panel hospital-span-2">
+  <div class="panel-head"><div><div class="eyebrow">BEDSIDES</div><h2>Latest vital-sign trend</h2></div></div>
+  <div class="ehr-vital-grid">
+  {% for v in vitals[:6] %}
+    <article><small>{{v.measured_at}}</small><b>SpO₂ {{v.spo2|round(0)|int}}%</b><span>HR {{v.heart_rate|round(0)|int}} · RR {{v.resp_rate|round(0)|int}}</span><span>BP {{v.systolic_bp|round(0)|int}}/{{v.diastolic_bp|round(0)|int}} · T {{v.temperature}}°C · O₂ {{v.oxygen_lpm}} L/min</span></article>
+  {% else %}<p>No inpatient vital-sign observations are configured.</p>{% endfor %}
+  </div>
+</section>
+
+<section class="panel hospital-panel">
+  <div class="panel-head"><h2>AI-detected anomalies</h2></div>
+  {% for x in anomalies %}
+    <article class="ehr-anomaly {{x.severity}}"><div><b>{{x.headline}}</b><em>{{x.score}}/100 · {{x.severity|upper}}</em></div><p>{{x.evidence}}</p><small>{{x.recommended_review}} · Status: {{x.status|replace('_',' ')}}</small></article>
+  {% else %}<p>No scan result yet.</p>{% endfor %}
+</section>
+
+<section class="panel hospital-panel">
+  <div class="panel-head"><h2>Labs</h2></div>
+  {% if labs %}<div class="hospital-table-scroll"><table class="data-table"><thead><tr><th>Time</th><th>Test</th><th>Value</th><th>Flag</th></tr></thead><tbody>{% for l in labs %}<tr><td>{{l.collected_at}}</td><td>{{l.test_name}}</td><td>{{l.value}} {{l.unit}}</td><td>{{l.abnormal_flag or '—'}}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p>No hospital lab results configured.</p>{% endif %}
+</section>
+
+<section class="panel hospital-panel">
+  <div class="panel-head"><h2>Medication administration</h2></div>
+  {% for m in meds %}<div class="ehr-med"><b>{{m.medication_name}} · {{m.dose}}</b><span>{{m.status|replace('_',' ')|title}} · scheduled {{m.scheduled_at}}</span>{% if m.reason %}<small>{{m.reason}}</small>{% endif %}</div>{% else %}<p>No medication administration records configured.</p>{% endfor %}
+</section>
+
+<section class="panel hospital-panel">
+  <div class="panel-head"><h2>Nursing observations</h2></div>
+  {% for n in notes %}<div class="ehr-note"><b>{{n.observed_at}} · {{n.note_type|replace('_',' ')|title}}</b><p>{{n.note_text}}</p><small>Mobility: {{n.mobility_status or 'not recorded'}} · Pain {{n.pain_score if n.pain_score is not none else '—'}}</small></div>{% else %}<p>No nursing observation configured.</p>{% endfor %}
+</section>
+
+<section class="panel hospital-panel hospital-span-2">
+  <div class="panel-head"><h2>Hospital Agentic AI workflows</h2></div>
+  {% for r in runs %}<a class="hospital-run-link" href="{{url_for('hospital_agent_run',run_id=r.id)}}"><b>{{r.scenario|replace('Hospital EHR anomaly: ','')|replace('_',' ')|title}}</b><span>{{r.status|replace('_',' ')|title}} · {{r.severity|title}}</span><span>→</span></a>{% else %}<p>No hospital workflow yet. Run an EHR scan from Hospital AI.</p>{% endfor %}
+</section>
+</div>
+{% endblock %}

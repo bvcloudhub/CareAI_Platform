@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top-hero">
+  <div><div class="eyebrow">DEVICE & CARE ECOSYSTEM</div><h1>Connect the devices already used around the patient</h1>
+  <p>Care.AI should remain device-agnostic: integrate certified medical devices, consumer wearables and privacy-conscious home sensors through adapters.</p></div>
+</div>
+
+<div class="architecture">
+  <div class="arch-col"><h3>BODY</h3><span>Apple Watch</span><span>ECG patch</span><span>SpO₂</span><span>BP monitor</span><span>Glucose</span></div>
+  <b>+</b>
+  <div class="arch-col"><h3>HOME</h3><span>Camera / edge AI</span><span>mmWave radar</span><span>Motion</span><span>Bed sensor</span><span>Medication dispenser</span></div>
+  <b>→</b>
+  <div class="arch-col highlight"><h3>CARE.AI DEVICE HUB</h3><span>Mobile / BLE gateway</span><span>Vendor APIs</span><span>MQTT / REST</span><span>Apple Health / HealthKit</span><span>Event normalisation</span></div>
+  <b>→</b>
+  <div class="arch-col"><h3>CARE INTELLIGENCE</h3><span>Patient 360°</span><span>Fall risk</span><span>Deterioration</span><span>Agentic workflow</span><span>FHIR / EHR</span></div>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><div><div class="eyebrow">NETHERLANDS / EU INTEGRATION OPTIONS</div><h2>Adapter catalogue for pilots</h2></div><span class="badge">Verify vendor/API terms before procurement</span></div>
+  <div class="integration-grid">
+    {% for i in items %}
+    <article>
+      <div><span class="integration-category">{{i.category}}</span><b>{{i.name}}</b></div>
+      <p><strong>Connection:</strong> {{i.connection_method}}</p>
+      <p><strong>Data:</strong> {{i.data_types}}</p>
+      <small>{{i.notes}}</small>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel value-panel">
+ <div><div class="eyebrow">RECOMMENDED PILOT STACK</div><h2>Start with existing devices; build proprietary hardware later</h2>
+ <p><b>Fall:</b> Apple Watch or wearable IMU + privacy-preserving radar / edge camera. <b>Vitals:</b> certified BP + SpO₂ + weight devices. <b>Clinical workflow:</b> Care.AI + FHIR interface.</p></div>
+ <div class="value-icons"><span>⌚<small>Wearable</small></span><b>+</b><span>◉<small>Home sensor</small></span><b>+</b><span>⚕<small>Medical device</small></span><b>→</b><span>♥<small>Care.AI</small></span></div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><div class="eyebrow">APPLE WATCH NOTE</div><h2>Use Apple Watch as one signal source, not the entire clinical architecture</h2></div></div>
+  <p>Care.AI can ingest health and mobility data that Apple exposes with the user's permission through an iPhone companion app. Apple's own Fall Detection can independently contact emergency services after a hard fall and about a minute of immobility. A production Care.AI design should not assume that Apple's emergency Fall Detection event itself is exposed as a real-time third-party API; instead, integrate permitted HealthKit/Apple Health data and, where appropriate, separately capture authorised motion signals in the companion app.</p>
+</section>
+{% endblock %}

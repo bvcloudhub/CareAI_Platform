@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block extra_head %}<link rel="stylesheet" href="{{url_for('static',filename='css/hospital.css')}}">{% endblock %}
+{% block content %}
+<section class="hospital-page-head">
+  <div>
+    <div class="eyebrow">CARE.AI · HOSPITAL HYBRID AI</div>
+    <h1>Inpatient monitoring with controlled autonomy</h1>
+    <p>Deterministic safety rules, interpretable ML, local protocol retrieval and optional LLM support. Human review remains mandatory before downstream actions.</p>
+  </div>
+  <div class="hospital-head-actions">
+    {% if demo.loaded %}
+    <form method="post" action="{{url_for('hospital_scan')}}">
+      <input type="hidden" name="scan_type" value="adhoc">
+      <button class="landing-btn coral" type="submit">Run ad-hoc EHR scan</button>
+    </form>
+    {% elif current_user.role == 'admin' %}
+    <form method="post" action="{{url_for('hospital_demo_seed')}}">
+      <button class="landing-btn coral" type="submit">Load synthetic hospital demo</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+<section class="hospital-ai-banner">
+  <div>
+    <div class="eyebrow">HYBRID DECISION-SUPPORT ENGINE</div>
+    <h2>Rules + ML + local RAG{% if ai.configured %} + optional OpenAI{% endif %}</h2>
+    <p>
+      {% if ai.configured %}
+      OpenAI is configured with {{ai.model}}. Deterministic safety rules remain the minimum urgency and human approval remains required.
+      {% else %}
+      {{ai.reason}}. The hospital workflow still runs safely with deterministic rules, available ML, local protocol retrieval and human review.
+      {% endif %}
+    </p>
+  </div>
+  <div class="hospital-engine-tags">
+    <span>Rules <b>ON</b></span>
+    <span>ML <b>ON when available</b></span>
+    <span>LLM <b>{{'ON' if ai.configured else 'OFF'}}</b></span>
+    <span>RAG <b>{{ai.rag_mode}}</b></span>
+    <span>Human gate <b>MANDATORY</b></span>
+  </div>
+</section>
+
+{% if not demo.loaded %}
+<section class="panel hospital-empty-state">
+  <div class="eyebrow">NO HOSPITAL ENCOUNTERS YET</div>
+  <h2>Hospital AI is installed but no inpatient demo data has been loaded.</h2>
+  <p>The integration does not silently create hospital records. An administrator can load a clearly labelled synthetic inpatient dataset that references existing demo patients without changing their core patient records.</p>
+  {% if current_user.role != 'admin' %}<p><b>Ask an administrator to load the synthetic hospital demo once.</b></p>{% endif %}
+</section>
+{% else %}
+<div class="hospital-scan-strip">
+  <article><small>ADMITTED PATIENTS</small><b>{{demo.admissions}}</b><span>Synthetic inpatient encounters</span></article>
+  <article><small>LAST SCAN</small><b>{{last_scan.completed_at if last_scan else 'Not run yet'}}</b><span>{{last_scan.patients_scanned if last_scan else 0}} patients scanned</span></article>
+  <article><small>ANOMALIES</small><b>{{last_scan.anomalies_found if last_scan else 0}}</b><span>Latest scan</span></article>
+  <article><small>AGENTIC RUNS</small><b>{{last_scan.runs_created if last_scan else 0}}</b><span>High/critical cases routed</span></article>
+</div>
+
+<section class="panel hospital-panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">WARD COMMAND CENTRE</div><h2>Admitted patients ranked by anomaly risk</h2></div>
+    <span class="hospital-demo-badge">Synthetic EHR demo</span>
+  </div>
+  <div class="hospital-table" role="table" aria-label="Admitted patients">
+    <div class="hospital-th" role="row"><span>Patient</span><span>Location</span><span>Reason</span><span>Latest vitals</span><span>Hybrid AI finding</span><span></span></div>
+    {% for r in rows %}
+    <a class="hospital-tr {{r.anomaly_severity or 'low'}}" href="{{url_for('hospital_admission',admission_id=r.id)}}">
+      <span><b>{{r.first_name}} {{r.last_name}}</b><small>{{r.external_ref}} · {{r.encounter_ref}}</small></span>
+      <span><b>{{r.ward}}</b><small>Room {{r.room}} · Bed {{r.bed}}</small></span>
+      <span>{{r.admission_reason}}</span>
+      <span>
+        {% if r.spo2 is not none %}<b>SpO₂ {{r.spo2|round(0)|int}}%</b><small>HR {{r.heart_rate|round(0)|int}} · RR {{r.resp_rate|round(0)|int}} · BP {{r.systolic_bp|round(0)|int}}/{{r.diastolic_bp|round(0)|int}}</small>{% else %}<small>No bedside vitals</small>{% endif %}
+      </span>
+      <span>{% if r.anomaly_score %}<em class="hospital-risk {{r.anomaly_severity}}">{{r.anomaly_severity|upper}} · {{r.anomaly_score}}</em><small>{{r.anomaly_headline}}</small>{% else %}<em class="hospital-risk low">NO OPEN ANOMALY</em><small>Run an EHR scan to evaluate current data</small>{% endif %}</span>
+      <span class="arrow">›</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel hospital-panel">
+  <div class="panel-head"><div><div class="eyebrow">HOSPITAL AGENTIC WORKFLOWS</div><h2>Human-controlled review queue</h2></div></div>
+  <div class="hospital-runs">
+    {% for r in active_runs %}
+      <a href="{{url_for('hospital_agent_run',run_id=r.id)}}">
+        <b>{{r.first_name}} {{r.last_name}}</b>
+        <span>{{r.scenario|replace('Hospital EHR anomaly: ','')|replace('_',' ')|title}}</span>
+        <em class="{{r.severity}}">{{r.status|replace('_',' ')}}</em>
+      </a>
+    {% else %}
+      <p>No hospital agentic workflow yet. Run an EHR scan.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="hospital-safety-note">
+  <b>Clinical safety:</b> Hospital Hybrid AI is decision support only. It does not make a final diagnosis, prescribe treatment, change medication, or autonomously trigger high-risk escalation.
+</section>
+{% endblock %}

@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top-hero">
+  <div>
+    <div class="eyebrow">{{t("ai_diagnostics")|upper}}</div>
+    <h1>{{t("ai_diag_title")}}</h1>
+    <p>{{t("ai_diag_sub")}}</p>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">{{t("lung_ai")|upper}}</div><h2>{{t("lung_cancer_models")}}</h2></div>
+    {% if runtime.available %}
+      <span class="badge">{{t("live_model")}} · TensorFlow {{runtime.versions.tensorflow}}</span>
+    {% endif %}
+  </div>
+  {% if not runtime.available %}
+  <div class="flash warning" role="status"><b>{{t("model_runtime_unavailable")}}</b> — {{runtime.reason}}</div>
+  {% endif %}
+  <div class="diag-cards">
+    {% for key in cancer_modules %}
+      {% set spec = registry[key] %}
+      <article class="{{'selected' if selected_module==key else ''}}">
+        <div class="diag-icon">{{'◉' if key=='ct' else '⬡'}}</div>
+        <h3>{{spec.label}}</h3>
+        <p>{{spec.modality}} · {{spec.accepts}}</p>
+        <div class="chip-grid">
+          {% for c in spec.resolved_class_names() %}<span>{{c.replace('_',' ')|title}}</span>{% endfor %}
+        </div>
+        <a href="{{url_for('ai_diagnostics_module',module=key)}}">{{t("run_analysis")}} →</a>
+      </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">{{t("wound_ai")|upper}}</div><h2>{{t("wound_models")}}</h2></div>
+    {% if wound_runtime.available %}
+      <span class="badge">{{t("live_model")}} · PyTorch {{wound_runtime.versions.torch}}</span>
+    {% endif %}
+  </div>
+  {% if not wound_runtime.available %}
+  <div class="flash warning" role="status"><b>{{t("model_runtime_unavailable")}}</b> — {{wound_runtime.reason}}</div>
+  {% endif %}
+  <div class="diag-cards">
+    <article class="{{'selected' if selected_module=='wound' else ''}}">
+      <div class="diag-icon">◇</div>
+      <h3>{{t("wound_ai")}}</h3>
+      <p>{{t("wound_desc")}}</p>
+      <div class="chip-grid">
+        <span>{{t("chip_wound_gate")}}</span>
+        <span>{{t("chip_wound_type")}}</span>
+        <span class="{{'' if wound_runtime.segmentation_available else 'chip-off'}}">{{t("chip_boundary")}}</span>
+        <span class="{{'' if wound_runtime.surgical_risk.available else 'chip-off'}}">{{t("chip_surgical_risk")}}</span>
+      </div>
+      <a href="{{url_for('ai_diagnostics_module',module='wound')}}">{{t("run_analysis")}} →</a>
+    </article>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <div class="eyebrow">{{t("adjacent_screening")|upper}}</div>
+      <h2>{{registry['xray'].label}}</h2>
+    </div>
+  </div>
+  <p class="model-scope-note">{{t("xray_scope_note")}}</p>
+  <div class="diag-cards">
+    <article class="{{'selected' if selected_module=='xray' else ''}}">
+      <div class="diag-icon">◎</div>
+      <h3>{{registry['xray'].label}}</h3>
+      <p>{{registry['xray'].modality}} · {{registry['xray'].accepts}}</p>
+      <div class="chip-grid">
+        {% for c in registry['xray'].resolved_class_names() %}<span>{{c|title}}</span>{% endfor %}
+      </div>
+      <a href="{{url_for('ai_diagnostics_module',module='xray')}}">{{t("run_analysis")}} →</a>
+    </article>
+    <article class="{{'selected' if selected_module=='skin' else ''}}">
+      <div class="diag-icon">◌</div>
+      <h3>{{t('skin_ai')}}</h3><p>{{t('skin_desc')}}</p>
+      <div class="chip-grid"><span>{{t("rule_based_demo")}}</span></div>
+      <a href="{{url_for('ai_diagnostics_module',module='skin')}}">{{t("run_analysis")}} →</a>
+    </article>
+  </div>
+</section>
+
+{% if selected_module %}
+{% set spec = registry.get(selected_module) %}
+{% set is_wound = selected_module == 'wound' %}
+{% set module_ready = runtime.available if spec else (wound_runtime.available if is_wound else true) %}
+<section class="panel diagnostic-workbench">
+  <div class="diag-work-left">
+    <div class="eyebrow">
+      {{selected_module|upper}} · {{t("live_model") if (spec or is_wound) else t("rule_based_demo")}}
+    </div>
+    <h2>{% if spec %}{{spec.label}}{% elif is_wound %}{{t("wound_ai")}}{% else %}{{t("skin_ai")}}{% endif %}</h2>
+
+    {% if spec %}
+    <dl class="model-facts">
+      <div><dt>{{t("modality")}}</dt><dd>{{spec.modality}}</dd></div>
+      <div><dt>{{t("classes")}}</dt><dd>{{spec.resolved_class_names()|map('replace','_',' ')|join(', ')|title}}</dd></div>
+      <div><dt>{{t("input_size")}}</dt><dd>{{spec.target[0]}}×{{spec.target[1]}}</dd></div>
+    </dl>
+    {% elif is_wound %}
+    <dl class="model-facts">
+      <div><dt>{{t("modality")}}</dt><dd>{{t("wound_photo")}}</dd></div>
+      <div><dt>{{t("pipeline")}}</dt><dd>{{t("wound_pipeline")}}</dd></div>
+      <div><dt>{{t("classes")}}</dt><dd>{{t("wound_classes_list")}}</dd></div>
+    </dl>
+    {% endif %}
+
+    {% if error %}
+      <div class="flash danger" role="alert">{{error}}</div>
+      {% if rejection and rejection.stage == 'gate' %}<div class="prototype-note">{{t("gate_reject_hint")}}</div>{% endif %}
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" class="diagnostic-upload">
+      {% if is_wound %}
+      <fieldset class="wound-context">
+        <legend>{{t("wound_context")}}</legend>
+        <label>
+          <input type="radio" name="wound_context" value="unknown" {{'checked' if wound_context != 'surgical'}}>
+          <span><b>{{t("context_unknown")}}</b><small>{{t("context_unknown_hint")}}</small></span>
+        </label>
+        <label>
+          <input type="radio" name="wound_context" value="surgical" {{'checked' if wound_context == 'surgical'}}
+                 {{'disabled' if not wound_runtime.surgical_risk.available}}>
+          <span><b>{{t("context_surgical")}}</b><small>{{t("context_surgical_hint")}}</small></span>
+        </label>
+      </fieldset>
+      {% endif %}
+      <label for="scan-upload">{{t("upload_image")}}</label>
+      <input id="scan-upload" type="file" name="image" required
+             accept="{{'.jpg,.jpeg,.png,.webp' if is_wound else '.jpg,.jpeg,.png,.bmp'}}"
+             {{'disabled' if not module_ready}}>
+      <button class="coral" {{'disabled' if not module_ready}}>{{t("run_analysis")}}</button>
+    </form>
+
+    {% if is_wound %}
+      <div class="prototype-note">{{t("analysis_may_take")}}</div>
+      {% if wound_runtime.surgical_risk.available and wound_runtime.surgical_risk.base_cached == false %}
+        <div class="prototype-note">{{t("biomedclip_download_note")}}</div>
+      {% endif %}
+    {% endif %}
+    {% if not module_ready %}<div class="prototype-note">{{t("model_runtime_unavailable")}}</div>{% endif %}
+    <div class="prototype-note">{{t("not_medical_device")}}</div>
+  </div>
+
+  <div class="diag-result">
+    {% if result and result.module == 'wound' %}
+      {% include "_wound_summary.html" %}
+
+    {% elif result %}
+      <div class="eyebrow">{{t("model_result")|upper}}</div>
+      <div class="result-score">
+        <strong>{{result.confidence_pct}}%</strong>
+        <span>{{t("confidence")}} · {{result.prediction_display}}</span>
+      </div>
+      <span class="risk {{result.risk}}">{{result.risk|upper}}</span>
+      <h3>{{result.finding}}</h3>
+
+      <div class="prob-bars">
+        {% for p in result.probabilities %}
+        <div class="prob-row">
+          <span class="prob-label">{{p.label}}</span>
+          <span class="prob-track"><i style="width:{{p.pct}}%"></i></span>
+          <span class="prob-value">{{p.pct}}%</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if result.low_confidence %}
+      <div class="diag-warning">{{t("low_confidence_warning")}}</div>
+      {% endif %}
+
+      <ul class="reco-list">
+        {% for item in result.recommendations %}<li>{{item}}</li>{% endfor %}
+      </ul>
+      <small>{{result.module_label}} · {{result.source_filename}} · {{result.run_id}}</small>
+      <a class="report-download" href="{{url_for('ai_diagnostics_report',run_id=result.run_id)}}">&#8681; {{t("download_report")}}</a>
+      <div class="diag-warning">{{result.disclaimer}}</div>
+
+    {% elif demo_result %}
+      <div class="eyebrow">{{t("demo_result")|upper}}</div>
+      <div class="result-score"><strong>{{demo_result.confidence}}%</strong><span>{{t("confidence")}}</span></div>
+      <h3>{{demo_result.result}}</h3>
+      <p><b>{{t("recommendation")}}:</b> {{demo_result.recommendation}}</p>
+      <small>{{demo_result.model_version}} · {{image_name}}</small>
+      <a class="report-download" href="{{url_for('ai_diagnostics_report',run_id=demo_result.run_id)}}">&#8681; {{t("download_report")}}</a>
+      <div class="diag-warning">{{demo_result.disclaimer}}</div>
+
+    {% else %}
+      <div class="diag-empty">
+        <div class="diag-icon big">✚</div>
+        <h3>{{t("upload_image")}}</h3>
+        <p>{{t("ai_diag_sub")}}</p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if result and result.module == 'wound' %}
+  {% include "_wound_details.html" %}
+{% elif result %}
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">{{t("explainability")|upper}}</div><h2>{{t("what_the_model_looked_at")}}</h2></div>
+    <span class="badge">{{result.created_at}}</span>
+  </div>
+  <div class="scan-compare">
+    <figure>
+      <img src="{{result.upload_url}}" alt="{{t('uploaded_scan')}}">
+      <figcaption>{{t("uploaded_scan")}}</figcaption>
+    </figure>
+    {% if result.cam_url %}
+    <figure>
+      <img src="{{result.cam_url}}" alt="{{t('gradcam_overlay')}}">
+      <figcaption>{{t("gradcam_overlay")}}</figcaption>
+    </figure>
+    {% else %}
+    <figure class="scan-missing">
+      <div>{{t("gradcam_unavailable")}}</div>
+      <figcaption>{{t("gradcam_overlay")}}</figcaption>
+    </figure>
+    {% endif %}
+  </div>
+  <p class="model-scope-note">{{t("gradcam_note")}}</p>
+
+  <hr class="portal-divider">
+  <div class="eyebrow">{{t("technical_details")|upper}}</div>
+  <div class="privacy-grid">
+    {% for k,v in result.technical.items() %}
+    <div><small>{{k}}</small>{{v}}</div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endif %}
+
+<section class="panel value-panel">
+  <div>
+    <div class="eyebrow">CARE.AI WORKFLOW</div>
+    <h2>Image → AI screening → care context → human review → EHR/FHIR</h2>
+    <p>Diagnostic modules are integrated into the same patient-care workflow rather than operating as isolated AI tools.</p>
+  </div>
+</section>
+{% endblock %}

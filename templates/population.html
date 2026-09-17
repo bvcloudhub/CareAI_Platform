@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top-hero"><div><div class="eyebrow">POPULATION HEALTH</div><h1>From individual signals to system intelligence</h1><p>Operational visibility across the monitored elderly population.</p></div></div>
+<section class="kpis">
+  <article><small>MONITORED</small><strong>{{metrics.total}}</strong><span>Active demo patients</span></article>
+  <article><small>STABLE</small><strong>{{metrics.stable or 0}}</strong><span>No priority signal</span></article>
+  <article><small>ATTENTION</small><strong>{{metrics.attention or 0}}</strong><span>Review during care round</span></article>
+  <article><small>HIGH / CRITICAL</small><strong>{{(metrics.high or 0)+(metrics.critical or 0)}}</strong><span>Human review required</span></article>
+  <article><small>OPEN TASKS</small><strong>{{metrics.open_tasks}}</strong><span>Care coordination workload</span></article>
+</section>
+<div class="grid-12">
+<section class="panel span-4"><div class="panel-head"><h2>Risk distribution</h2></div><canvas id="riskChart"></canvas></section>
+<section class="panel span-4"><div class="panel-head"><h2>Care geography</h2></div><canvas id="cityChart"></canvas></section>
+<section class="panel span-4"><div class="panel-head"><h2>Chronic conditions</h2></div><canvas id="conditionChart"></canvas></section>
+</div>
+<section class="panel value-panel">
+  <div><div class="eyebrow">WHY THIS MATTERS</div><h2>One operational view for hospitals, clinics and remote-care providers</h2><p>See demand earlier, prioritise limited staff, track interventions and understand which care pathways are creating pressure.</p></div>
+  <div class="impact-row"><span><b>{{metrics.interventions_30d}}</b><small>30-day interventions</small></span><span><b>{{metrics.open_alerts}}</b><small>Open alerts</small></span><span><b>{{metrics.open_tasks}}</b><small>Care tasks</small></span></div>
+</section>
+<script>
+const theme=['#ee6f51','#2f6b52','#f0a14a','#164c3a','#8fbda9','#d8c6a4'];
+new Chart(document.getElementById('riskChart'),{type:'doughnut',data:{labels:{{risk_dist|map(attribute='label')|list|tojson}},datasets:[{data:{{risk_dist|map(attribute='value')|list|tojson}},backgroundColor:theme}]},options:{plugins:{legend:{position:'bottom'}}}});
+new Chart(document.getElementById('cityChart'),{type:'bar',data:{labels:{{city_dist|map(attribute='label')|list|tojson}},datasets:[{label:'People',data:{{city_dist|map(attribute='value')|list|tojson}},backgroundColor:'#2f6b52'}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{precision:0}}}}});
+new Chart(document.getElementById('conditionChart'),{type:'bar',data:{labels:{{condition_dist|map(attribute='label')|list|tojson}},datasets:[{label:'People',data:{{condition_dist|map(attribute='value')|list|tojson}},backgroundColor:'#ee6f51'}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}}});
+</script>
+{% endblock %}

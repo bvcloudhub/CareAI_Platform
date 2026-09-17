@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block extra_head %}<link rel="stylesheet" href="{{url_for('static',filename='css/agentic.css')}}">{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{{url_for('agentic_run',run_id=run.id)}}">← Back to workflow</a>
+    <div class="eyebrow">OUTCOME AGENT · RUN #{{run.id}}</div>
+    <h1>{{run.first_name}} {{run.last_name}} · workflow metrics</h1>
+    <p>{{run.event_label or 'Patient event'}} · {{run.event_location or 'Location not recorded'}} · synthetic controlled-autonomy workflow.</p>
+  </div>
+  <a class="outline-btn" href="{{url_for('dashboard')}}">Command Centre →</a>
+</div>
+
+<section class="outcome-hero-grid">
+  <article><small>EVENT DETECTED</small><strong>{{metrics.event_detected_at if metrics and metrics.event_detected_at else run.event_detected_at or '—'}}</strong><span>{{run.event_label or 'Patient event'}}</span></article>
+  <article><small>AI TRIAGE</small><strong>{{metrics.triage_at if metrics and metrics.triage_at else '—'}}</strong><span>{{run.severity|upper}}{% if run.triage_score is not none %} · {{run.triage_score}}/100{% endif %}</span></article>
+  <article><small>NURSE REVIEW</small><strong>{{metrics.nurse_review_at if metrics and metrics.nurse_review_at else '—'}}</strong><span>{{run.assigned_professional or 'Responsible nurse'}}</span></article>
+  <article><small>HUMAN DECISION</small><strong>{{metrics.decision_at if metrics and metrics.decision_at else '—'}}</strong><span>{{metrics.decision|upper if metrics and metrics.decision else 'Pending'}}</span></article>
+  <article><small>RESPONSE STARTED</small><strong>{{metrics.response_started_at if metrics and metrics.response_started_at else '—'}}</strong><span>Only after approval</span></article>
+  <article><small>FAMILY UPDATE</small><strong>{{metrics.family_notification_at if metrics and metrics.family_notification_at else '—'}}</strong><span>Consent-based only</span></article>
+  <article><small>RESPONSE TIME</small><strong>{{metrics.response_time_seconds if metrics and metrics.response_time_seconds is not none else '—'}}{% if metrics and metrics.response_time_seconds is not none %}s{% endif %}</strong><span>Workflow start → approved response start</span></article>
+  <article><small>TELECONSULTATION</small><strong>{{metrics.teleconsultation_status if metrics and metrics.teleconsultation_status else 'not started'}}</strong><span>Demo/mock integration</span></article>
+</section>
+
+<div class="grid-12">
+  <section class="panel span-7">
+    <div class="panel-head"><div><div class="eyebrow">WORKFLOW OUTCOME</div><h2>Recorded by Outcome Agent</h2></div></div>
+    <div class="metric-detail-list">
+      <p><span>Patient</span><b>{{run.first_name}} {{run.last_name}} · {{run.external_ref}}</b></p>
+      <p><span>Event</span><b>{{run.event_label or 'Patient event'}} · {{run.event_location or 'Location not recorded'}}</b></p>
+      <p><span>Sensor confidence</span><b>{{run.sensor_confidence ~ '%' if run.sensor_confidence is not none else 'Not recorded'}}</b></p>
+      <p><span>Triage</span><b>{{run.severity|upper}}{% if run.triage_score is not none %} · {{run.triage_score}}/100{% endif %}</b></p>
+      <p><span>Human decision</span><b>{{approval.decision|upper if approval else 'Pending'}}{% if approval and approval.note %} · {{approval.note}}{% endif %}</b></p>
+      <p><span>Intervention</span><b>{{metrics.intervention if metrics and metrics.intervention else 'Pending'}}</b></p>
+      <p><span>Outcome status</span><b>{{metrics.outcome_status if metrics and metrics.outcome_status else 'Pending'}}</b></p>
+      <p><span>Workflow completion</span><b>{{metrics.workflow_completion_status if metrics and metrics.workflow_completion_status else run.status}}</b></p>
+      <p><span>Operational impact</span><b>{{metrics.operational_impact if metrics and metrics.operational_impact else 'Pending'}}</b></p>
+    </div>
+  </section>
+  <section class="panel span-5">
+    <div class="panel-head"><div><div class="eyebrow">TRACEABLE ACTIONS</div><h2>What happened after approval</h2></div></div>
+    <div class="run-history">
+      {% for a in actions %}
+      <div class="outcome-action-row"><span class="risk medium">{{a.status|upper}}</span><div><b>{{a.action_type|replace('_',' ')|title}}</b><small>{{a.message or 'Recorded action'}}</small></div></div>
+      {% else %}<p class="empty light">No post-approval actions recorded.</p>{% endfor %}
+    </div>
+  </section>
+</div>
+
+<div class="prototype-note">These are synthetic workflow metrics. CareAI does not make an autonomous diagnosis, treatment decision, prescription change or emergency-escalation decision.</div>
+{% endblock %}

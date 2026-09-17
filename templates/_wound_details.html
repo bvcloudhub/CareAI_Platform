@@ -1,0 +1,124 @@
+{# Panels below the Wound AI workbench: images, measurements, infection-risk
+   components, pre-analysis checks, limitations and technical detail. #}
+{% set b = result.boundary %}
+{% set r = result.surgical_risk %}
+
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">{{t("explainability")|upper}}</div><h2>{{t("what_the_models_saw")}}</h2></div>
+    <span class="badge">{{result.created_at}}</span>
+  </div>
+  <div class="scan-compare">
+    <figure>
+      <img src="{{result.upload_url}}" alt="{{t('uploaded_scan')}}">
+      <figcaption>{{t("uploaded_scan")}}</figcaption>
+    </figure>
+    {% if result.mode == 'wound_type' %}
+      {% if result.cam_url %}
+      <figure>
+        <img src="{{result.cam_url}}" alt="{{t('gradcam_overlay')}}">
+        <figcaption>{{t("gradcam_overlay")}}</figcaption>
+      </figure>
+      {% else %}
+      <figure class="scan-missing">
+        <div>{{t("gradcam_unavailable")}}</div>
+        <figcaption>{{t("gradcam_overlay")}}</figcaption>
+      </figure>
+      {% endif %}
+    {% endif %}
+    {% if b and b.overlay_url %}
+    <figure>
+      <img src="{{b.overlay_url}}" alt="{{t('boundary_overlay')}}">
+      <figcaption>{{t("boundary_overlay")}}</figcaption>
+    </figure>
+    {% endif %}
+  </div>
+  <p class="model-scope-note">
+    {{t("gradcam_note") if result.mode == 'wound_type' else t("gradcam_disabled_note")}}
+  </p>
+</section>
+
+{% if b and b.detected %}
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">{{t("boundary_overlay")|upper}}</div><h2>{{t("wound_measurements")}}</h2></div>
+  </div>
+  <div class="measure-grid">
+    <div><small>{{t("area")}}</small><b>{{'{:,.0f}'.format(b.area_px)}}</b><em>px²</em></div>
+    <div><small>{{t("length")}}</small><b>{{'%.0f'|format(b.length_px)}}</b><em>px</em></div>
+    <div><small>{{t("width")}}</small><b>{{'%.0f'|format(b.width_px)}}</b><em>px</em></div>
+    <div><small>{{t("perimeter")}}</small><b>{{'%.0f'|format(b.perimeter_px)}}</b><em>px</em></div>
+    <div><small>{{t("frame_coverage")}}</small><b>{{'%.1f'|format(b.coverage_pct)}}</b><em>%</em></div>
+  </div>
+  <p class="model-scope-note">{{t("pixels_note")}}</p>
+</section>
+{% elif result.boundary_note %}
+<div class="flash warning" role="status">{{result.boundary_note}}</div>
+{% endif %}
+
+{% if r %}
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">{{t("infection_risk_screen")|upper}}</div><h2>{{r.category_display}}</h2></div>
+    <span class="review-badge {{'confirm' if r.clinical_review_recommended else 'review'}}">
+      {{t("ensemble_score")}} {{'%.2f'|format(r.ensemble_score)}} · {{t("threshold")}} {{'%.2f'|format(r.decision_threshold)}}
+    </span>
+  </div>
+  <p class="heldout-note">
+    {{t("screen_trigger_classifier") if r.trigger == 'classifier' else t("screen_trigger_clinician")}}
+  </p>
+  <div class="prob-bars on-light">
+    <div class="prob-row">
+      <span class="prob-label">BiomedCLIP V9 · ×{{'%.2f'|format(r.weights.v9)}}</span>
+      <span class="prob-track"><i style="width:{{(r.v9_score * 100)|round(1)}}%"></i></span>
+      <span class="prob-value">{{'%.2f'|format(r.v9_score)}}</span>
+    </div>
+    <div class="prob-row">
+      <span class="prob-label">DenseNet121 V8A · ×{{'%.2f'|format(r.weights.v8a)}}</span>
+      <span class="prob-track"><i style="width:{{(r.v8a_score * 100)|round(1)}}%"></i></span>
+      <span class="prob-value">{{'%.2f'|format(r.v8a_score)}}</span>
+    </div>
+  </div>
+  {% if r.review_reasons %}
+  <ul class="reco-list on-light">
+    {% for reason in r.review_reasons %}<li>{{reason|capitalize}}.</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <p class="model-scope-note">{{r.clinical_note}} {{t("dev_only_evaluation")}}</p>
+</section>
+{% elif result.surgical_risk_note %}
+<div class="flash warning" role="status">{{result.surgical_risk_note}}</div>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">{{t("image_checks")|upper}}</div><h2>{{t("image_checks_title")}}</h2></div>
+  </div>
+  {% set q = result.quality.metrics %}
+  <div class="check-list">
+    <div>
+      <span class="check-pill {{result.quality.status}}">{{t('quality_' ~ result.quality.status)}}</span>
+      <b>{{t("image_quality")}}</b>
+      <small>{{t("brightness")}} {{q.brightness}} · {{t("contrast")}} {{q.contrast}} ·
+        {{t("sharpness")}} {{q.blur_score}} · {{q.width}}×{{q.height}} px</small>
+    </div>
+    <div>
+      <span class="check-pill {{result.gate.status}}">{{t('gate_' ~ result.gate.status)}}</span>
+      <b>{{t("wound_screening")}}</b>
+      <small>{{t("wound_score")}} {{'%.0f'|format(result.gate.wound_probability * 100)}}% ·
+        {{t("threshold")}} {{'%.2f'|format(result.gate.threshold)}}</small>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="eyebrow">{{t("limitations")|upper}}</div>
+  <ul class="limitations-list">
+    {% for note in result.limitations %}<li>{{note}}</li>{% endfor %}
+  </ul>
+  <hr class="portal-divider">
+  <div class="eyebrow">{{t("technical_details")|upper}}</div>
+  <div class="privacy-grid">
+    {% for k, v in result.technical.items() %}<div><small>{{k}}</small>{{v}}</div>{% endfor %}
+  </div>
+</section>

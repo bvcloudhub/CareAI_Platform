@@ -1,0 +1,48 @@
+{# Right-hand result column for Wound AI. Rendered inside .diag-result. #}
+<div class="eyebrow">{{t("model_result")|upper}}</div>
+
+{% if result.mode == 'wound_type' %}
+  <div class="result-score">
+    <strong>{{result.confidence_pct}}%</strong>
+    <span>{{t("confidence")}} · {{result.prediction_display}}</span>
+  </div>
+  <span class="review-badge {{'confirm' if result.uncertain else 'review'}}">{{result.review_status}}</span>
+  <h3>{{result.finding}}</h3>
+
+  <div class="prob-bars">
+    {% for p in result.probabilities %}
+    <div class="prob-row">
+      <span class="prob-label">{{p.label}}</span>
+      <span class="prob-track"><i style="width:{{p.pct}}%"></i></span>
+      <span class="prob-value">{{p.pct}}%</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% set h = result.heldout %}
+  {% if h and h.precision is not none and h.sensitivity is not none %}
+  <p class="heldout-note">
+    {{t("heldout_for_class")}}: {{t("heldout_precision")|format((h.precision * 100)|round|int)}} ·
+    {{t("heldout_sensitivity")|format((h.sensitivity * 100)|round|int)}}
+  </p>
+  {% endif %}
+
+{% else %}
+  {% set r = result.surgical_risk %}
+  <div class="result-score">
+    <strong>{{'%.2f'|format(r.ensemble_score)}}</strong>
+    <span>{{t("ensemble_score")}} · {{t("threshold")}} {{'%.2f'|format(r.decision_threshold)}}</span>
+  </div>
+  <span class="review-badge {{'confirm' if r.clinical_review_recommended else 'review'}}">{{result.review_status}}</span>
+  <h3>{{r.category_display}}</h3>
+  <p class="heldout-note">{{t("not_calibrated_note")}} {{t("dev_only_evaluation")}}</p>
+{% endif %}
+
+{% for warning in result.warnings %}<div class="diag-warning">{{warning}}</div>{% endfor %}
+
+<ul class="reco-list">
+  {% for item in result.recommendations %}<li>{{item}}</li>{% endfor %}
+</ul>
+<small>{{result.module_label}} · {{result.source_filename}} · {{result.run_id}}</small>
+<a class="report-download" href="{{url_for('ai_diagnostics_report',run_id=result.run_id)}}">&#8681; {{t("download_report")}}</a>
+<div class="diag-warning">{{result.disclaimer}}</div>

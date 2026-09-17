@@ -1,0 +1,12 @@
+uploads/
+static/cam/
+.venv*/
+__pycache__/
+*.pyc
+careai.db
+app.legacy.css.bak
+__pycache__
+.DS_Store
+.env
+.env.example
+*.db

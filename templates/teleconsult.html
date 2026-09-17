@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="tele-page">
+  <div class="tele-head">
+    <div><div class="eyebrow">SECURE VIDEO CONSULTATION · DEMO</div>
+      <h1>{{consult.first_name}} {{consult.last_name}} ↔ {{consult.clinician_name}}</h1>
+      <p>{{consult.reason}} · Room {{consult.room_code}} · Status <b>{{consult.status|upper}}</b></p>
+    </div>
+    <a class="outline-btn" href="javascript:history.back()">← Back</a>
+  </div>
+
+  <div class="tele-layout">
+    <section class="video-workspace">
+      <div class="remote-video">
+        <div class="video-placeholder">
+          <div class="clinician-avatar">{{consult.clinician_name[0]}}</div>
+          <h2>{{consult.clinician_name}}</h2>
+          <p>{{consult.clinician_role|upper}} · Care.AI Remote Care</p>
+          <span id="remoteState">{{'Connected' if consult.status=='active' else 'Waiting to connect'}}</span>
+        </div>
+        <video id="localVideo" autoplay muted playsinline></video>
+        <div class="video-badge">You</div>
+      </div>
+
+      <div class="call-controls">
+        <button type="button" onclick="startCamera()" id="cameraBtn">◉ Start camera</button>
+        <button type="button" onclick="toggleMute()" id="muteBtn">🎙 Mute</button>
+        {% if consult.status!='active' %}
+        <form method="post" action="{{url_for('teleconsult_status',consult_id=consult.id)}}"><input type="hidden" name="status" value="active"><button class="join-call">▶ Join consultation</button></form>
+        {% else %}
+        <form method="post" action="{{url_for('teleconsult_status',consult_id=consult.id)}}"><input type="hidden" name="status" value="ended"><button class="end-call">■ End call</button></form>
+        {% endif %}
+      </div>
+
+      <div class="tele-disclaimer">Prototype video UI uses your browser camera locally. A production deployment should use an EU-hosted WebRTC/SFU service, authenticated room tokens, encryption, consent, call audit metadata and retention controls.</div>
+    </section>
+
+    <aside class="tele-context">
+      <section class="context-card">
+        <div class="context-card-head"><h3>Live patient context</h3><span class="live-label">Care.AI</span></div>
+        <div class="context-vitals">
+          <div><small>SpO₂</small><b>{{"%.1f"|format(latest.spo2 or 0)}}%</b></div>
+          <div><small>HR</small><b>{{"%.0f"|format(latest.heart_rate or 0)}}</b></div>
+          <div><small>Resp</small><b>{{"%.0f"|format(latest.resp_rate or 0)}}</b></div>
+          <div><small>Activity</small><b>{{"%.0f"|format(latest.activity or 0)}}</b></div>
+        </div>
+        {% set ns=namespace(overall=None) %}{% for r in risks %}{% if r.risk_type=='overall' %}{% set ns.overall=r %}{% endif %}{% endfor %}
+        {% if ns.overall %}<div class="context-alert {{ns.overall.level}}"><b>{{ns.overall.explanation}}</b><small>{{ns.overall.evidence}}</small></div>{% endif %}
+      </section>
+
+      <section class="context-card tele-chat">
+        <h3>Consultation chat</h3>
+        <div class="tele-chat-log">
+          {% for m in msgs %}<div><b>{{m.sender_name or m.sender_type|title}}</b><p>{{m.message}}</p><small>{{m.created_at}}</small></div>{% else %}<p>No messages yet.</p>{% endfor %}
+        </div>
+        <form method="post" action="{{url_for('teleconsult_message',consult_id=consult.id)}}" class="care-form">
+          <input name="message" placeholder="Type a message..." required><button>Send</button>
+        </form>
+      </section>
+    </aside>
+  </div>
+</div>
+<script>
+let stream=null;
+async function startCamera(){
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+    const v=document.getElementById('localVideo'); v.srcObject=stream;
+    document.getElementById('cameraBtn').innerText='✓ Camera on';
+  }catch(e){alert('Camera access is unavailable. Please allow browser camera permission for the demo.');}
+}
+function toggleMute(){
+  if(!stream)return;
+  const tracks=stream.getAudioTracks(); if(!tracks.length)return;
+  tracks[0].enabled=!tracks[0].enabled;
+  document.getElementById('muteBtn').innerText=tracks[0].enabled?'🎙 Mute':'🔇 Unmute';
+}
+</script>
+{% endblock %}

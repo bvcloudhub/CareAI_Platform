@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top-hero compact">
+  <div>
+    <a href="{{url_for('patient',patient_id=p.id)}}" class="back">← Patient 360°</a>
+    <div class="eyebrow">3D DIGITAL HOME TWIN</div>
+    <h1>{{p.first_name}}'s connected home</h1>
+    <p>Physical context + health signals + explainable sensor fusion + agentic care response.</p>
+  </div>
+  <form method="post" action="{{url_for('simulate_fall_live',patient_id=p.id)}}"><button class="coral">▶ Run live fall simulation</button></form>
+</div>
+
+<div class="twin-layout">
+  <section class="twin-stage">
+    <div class="twin-status" id="twinStatus"><b>NORMAL ACTIVITY</b><span>{{p.first_name}} moving through home</span></div>
+    <div class="room3d">
+      <div class="floor"></div><div class="wall backwall"></div><div class="wall sidewall"></div>
+      <div class="zone bedroom"><span>BEDROOM</span><i>Sleep sensor</i></div>
+      <div class="zone living"><span>LIVING ROOM</span><i>Camera + motion</i></div>
+      <div class="zone bathroom" id="bathroom"><span>BATHROOM</span><i>Fall + presence</i><em id="bathAlert"></em></div>
+      <div class="patient-avatar" id="avatar"><b>{{p.first_name[0]}}</b><small>Wearable</small></div>
+      <div class="sensor s1">◉</div><div class="sensor s2">◉</div><div class="sensor s3">◉</div>
+    </div>
+    <div class="twin-legend"><span>◉ Active sensor</span><span>● Patient location</span><span>◆ Wearable stream</span></div>
+  </section>
+
+  <aside class="twin-insights">
+    <div class="eyebrow coral-txt">LIVE TWIN STATE</div>
+    <h2>What Care.AI understands</h2>
+
+    <div class="twin-score"><b>{{"%.0f"|format(latest.activity or 0)}}</b><span>Mobility score</span></div>
+    <div class="twin-vitals">
+      <p>SpO₂ <b>{{"%.1f"|format(latest.spo2 or 0)}}%</b></p>
+      <p>HR <b>{{"%.0f"|format(latest.heart_rate or 0)}} bpm</b></p>
+      <p>Resp <b>{{"%.0f"|format(latest.resp_rate or 0)}} /min</b></p>
+      <p>BP <b>{{"%.0f"|format(latest.bp_sys or 0)}} / {{"%.0f"|format(latest.bp_dia or 0)}}</b></p>
+    </div>
+
+    {% if fall and fall.status=='active' and fall.score>0 %}
+    <div class="fall-confidence">
+      <small>ACTIVE FALL EVENT</small>
+      <strong>{{fall.score}}%</strong>
+      <b>sensor-fusion confidence</b>
+      <span>{{fall.location}} · {{fall.status|upper}}</span>
+    </div>
+    <div class="evidence-list">
+      <div>✓ Wearable impact <b>{{"%.1f"|format(fall.impact_g or 0)}}g</b></div>
+      <div>✓ Orientation change <b>{{"%.0f"|format(fall.orientation_change_deg or 0)}}°</b></div>
+      <div>✓ Camera posture <b>{{fall.camera_posture|replace('_',' ')}}</b></div>
+      <div>✓ Immobility <b>{{((fall.immobility_seconds or 0)/60)|round(0)|int}} min</b></div>
+    </div>
+    {% else %}
+    <div class="fall-confidence safe"><small>ACTIVE FALL EVENT</small><strong>0%</strong><b>No current fall event</b></div>
+    {% endif %}
+  </aside>
+</div>
+
+<div class="grid-12">
+<section class="panel span-7">
+  <div class="panel-head"><div><div class="eyebrow">SENSOR FUSION</div><h2>How fall detection is verified</h2></div></div>
+  <div class="sensor-fusion">
+    <div><span>⌚</span><b>Wearable IMU</b><small>impact + orientation</small></div><i>+</i>
+    <div><span>◉</span><b>Edge Camera</b><small>person-on-floor posture</small></div><i>+</i>
+    <div><span>⌂</span><b>Motion</b><small>post-impact immobility</small></div><i>+</i>
+    <div><span>♥</span><b>Patient context</b><small>mobility + fall history</small></div><i>→</i>
+    <strong>{{fall.score if fall and fall.status=='active' else 0}}%<small>Fall confidence</small></strong>
+  </div>
+</section>
+
+<section class="panel span-5 agent-live">
+  <div class="panel-head"><div><div class="eyebrow coral-txt">AGENT ACTIVITY</div><h2>Care.AI response</h2></div></div>
+  <div id="agentTimeline" class="agent-timeline">
+    <div data-step="0"><span>1</span><p><b>Monitoring Agent</b><small>Watching movement and vital signals</small></p></div>
+    <div data-step="1"><span>2</span><p><b>Risk Agent</b><small>Combines IMU, posture and immobility</small></p></div>
+    <div data-step="2"><span>3</span><p><b>Care Agent</b><small>Recommends immediate welfare check</small></p></div>
+    <div data-step="3"><span>4</span><p><b>Orchestrator</b><small>Creates urgent nurse task</small></p></div>
+    <div data-step="4"><span>5</span><p><b>Notification Agent</b><small>Queues care-team notification</small></p></div>
+  </div>
+</section>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><div><div class="eyebrow">PREDICT BEFORE · DETECT DURING · RESPOND AFTER</div><h2>Fall intelligence is more than an alarm</h2></div></div>
+  <div class="three-stage">
+    <article><b>01 · PREDICT</b><h3>Fall Risk</h3><p>Longitudinal mobility, frailty, sleep and prior-fall patterns indicate increasing vulnerability.</p></article>
+    <article><b>02 · DETECT</b><h3>Active Fall Event</h3><p>Wearable impact + orientation + camera posture + immobility build a confidence score.</p></article>
+    <article><b>03 · RESPOND</b><h3>Care Workflow</h3><p>Care.AI recommends and coordinates the appropriate human response while preserving clinical accountability.</p></article>
+  </div>
+</section>
+
+<script>
+const play = new URLSearchParams(window.location.search).get('play') === 'fall';
+const avatar=document.getElementById('avatar'), status=document.getElementById('twinStatus'),
+      bathroom=document.getElementById('bathroom'), bathAlert=document.getElementById('bathAlert');
+function agentStep(n){document.querySelectorAll('#agentTimeline [data-step]').forEach(el=>{if(+el.dataset.step<=n)el.classList.add('done')})}
+if(play){
+  status.innerHTML='<b>NORMAL ACTIVITY</b><span>{{p.first_name}} walking toward bathroom</span>';
+  setTimeout(()=>{avatar.classList.add('walking'); status.innerHTML='<b>MOVEMENT ANOMALY</b><span>Rapid gait/orientation change detected</span>';},1200);
+  setTimeout(()=>{avatar.classList.remove('walking');avatar.classList.add('falling');bathroom.classList.add('alert-room');bathAlert.innerText='⚠ POSSIBLE FALL';status.classList.add('warning');status.innerHTML='<b>POSSIBLE FALL</b><span>Wearable impact + posture change</span>';agentStep(0);},3000);
+  setTimeout(()=>{avatar.classList.add('on-floor');bathAlert.innerText='⚠ FALL DETECTED · NO MOVEMENT';status.classList.add('critical');status.innerHTML='<b>FALL VERIFIED · 94%</b><span>Sensor fusion: impact + posture + immobility</span>';agentStep(1);},4700);
+  setTimeout(()=>agentStep(2),6100);
+  setTimeout(()=>agentStep(3),7400);
+  setTimeout(()=>agentStep(4),8600);
+}else{
+  let step=0;
+  setInterval(()=>{step=(step+1)%3;avatar.className='patient-avatar pos'+step;},2200);
+}
+</script>
+{% endblock %}

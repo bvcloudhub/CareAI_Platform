@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top-hero">
+  <div>
+    <div class="eyebrow">CARE.AI COMMAND CENTRE · NETHERLANDS</div>
+    <h1>{{t("who_needs_attention")}}</h1>
+    <p>Care.AI turns continuous home and clinical data into prioritised, explainable care actions.</p>
+  </div>
+  <div class="button-row">
+    <a class="outline-btn" href="{{url_for('ai_diagnostics')}}">✚ {{t("ai_diagnostics")}}</a>
+    <a class="outline-btn" href="{{url_for('agentic_care')}}">✦ Agentic Care</a>
+    <form action="{{url_for('simulate_tick')}}" method="post"><button class="coral">▶ Advance simulation</button></form>
+  </div>
+</div>
+
+<div class="journey-band">
+  <div><b>01</b><span>MONITOR</span><small>Wearables · sensors · cameras</small></div>
+  <i>→</i><div><b>02</b><span>UNDERSTAND</span><small>Unified patient profile</small></div>
+  <i>→</i><div><b>03</b><span>PREDICT</span><small>Risk & deterioration intelligence</small></div>
+  <i>→</i><div><b>04</b><span>ACT</span><small>Care coordination</small></div>
+  <i>→</i><div><b>05</b><span>IMPROVE</span><small>Better outcomes</small></div>
+</div>
+
+{% if agentic_cases %}
+<section class="command-agentic-cases" aria-label="Agentic priority cases">
+  {% for c in agentic_cases %}
+  <article class="command-agentic-case {{c.status}}">
+    <div class="agentic-case-title">
+      <span class="alert-dot {{c.severity if c.severity in ('critical','high','medium','low') else 'medium'}}"></span>
+      <div><small>{{(c.severity|upper ~ ' AGENTIC EVENT') if c.status!='rejected' else 'HUMAN-STOPPED AGENTIC EVENT'}}</small><h3>{{c.first_name}} {{c.last_name}} · {{c.alert_type}} · {{c.confidence}}% sensor confidence</h3></div>
+      <span class="case-status">{{c.status|replace('_',' ')|upper}}</span>
+    </div>
+    <div class="agentic-case-facts">
+      <div><small>RISK</small><b>{{c.severity|upper}}</b></div>
+      <div><small>LOCATION</small><b>{{c.location}}</b></div>
+      <div><small>EVENT TIME</small><b>{{c.event_detected_at or c.started_at}}</b></div>
+      <div><small>ASSIGNED NURSE</small><b>{{c.assigned_nurse}}</b></div>
+      <div><small>PROGRESS</small><b>{{c.progress_completed}} / {{c.progress_total}}</b></div>
+      <div><small>NEXT ACTION</small><b>{{c.next_action}}</b></div>
+    </div>
+    <div class="agentic-case-actions">
+      <a href="{{url_for('agentic_run',run_id=c.run_id)}}">View case</a>
+      {% if c.status=='awaiting_approval' %}<a class="urgent" href="{{url_for('agentic_run',run_id=c.run_id)}}#approval-gate">Nurse approval</a>{% endif %}
+      {% if c.teleconsultation_id %}<a href="{{url_for('teleconsult_room',consult_id=c.teleconsultation_id)}}">Teleconsultation</a>{% else %}<span>Teleconsultation pending</span>{% endif %}
+      <a href="{{url_for('agentic_run',run_id=c.run_id)}}#family-status">Family update · {{c.family_update_status}}</a>
+      <a href="{{url_for('agentic_outcome',run_id=c.run_id)}}">Outcome metrics</a>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="kpis">
+  <article><small>{{t("monitored_people")|upper}}</small><strong>{{metrics.total}}</strong><span>Across home & assisted care</span></article>
+  <article><small>{{t("need_attention")|upper}}</small><strong>{{(metrics.attention or 0)+(metrics.high or 0)+(metrics.critical or 0)+(agentic_extra_critical or 0)}}</strong><span>Risk-prioritised today</span></article>
+  <article><small>{{t("high_critical")|upper}}</small><strong>{{(metrics.high or 0)+(metrics.critical or 0)+(agentic_extra_critical or 0)}}</strong><span>Require human review</span></article>
+  <article><small>{{t("open_care_tasks")|upper}}</small><strong>{{metrics.open_tasks}}</strong><span>Coordinated by Care.AI</span></article>
+  <article><small>{{t("interventions")|upper}}</small><strong>{{metrics.interventions_30d}}</strong><span>Agent + care team actions</span></article>
+</section>
+
+<div class="grid-12">
+<section class="panel span-8">
+  <div class="panel-head"><div><div class="eyebrow">RISK-LED CARE</div><h2>{{t("priority_queue")}}</h2></div><span class="badge">Live synthetic demo</span></div>
+  <div class="patient-list">
+  {% for p in patients %}
+    <a href="{{url_for('patient',patient_id=p.id)}}" class="patient-row {{'agentic-priority-row' if p.agentic_case and p.agentic_case.status!='rejected' else ''}}">
+      <div class="avatar">{{p.first_name[0]}}{{p.last_name[0]}}</div>
+      <div class="patient-id"><b>{{p.first_name}} {{p.last_name}}</b><small>{{p.city}} · {{p.living_setting}}</small>{% if p.agentic_case and p.agentic_case.status!='rejected' %}<small class="agentic-row-label">✦ {{p.agentic_case.alert_type}} · {{p.agentic_case.status|replace('_',' ')}}</small>{% endif %}</div>
+      <div class="metric"><small>SpO₂</small><b>{{"%.1f"|format(p.spo2 or 0)}}%</b></div>
+      <div class="metric"><small>HR</small><b>{{"%.0f"|format(p.heart_rate or 0)}}</b></div>
+      <div class="metric"><small>Activity</small><b>{{"%.0f"|format(p.activity or 0)}}</b></div>
+      <div><span class="risk {{p.risk_level or 'low'}}">{{(p.risk_level or 'low')|upper}} · {{p.risk_score or 0}}</span><small class="reason">{{p.risk_reason or 'Initial assessment'}}</small></div>
+      <div class="arrow">›</div>
+    </a>
+  {% endfor %}
+  </div>
+</section>
+
+<section class="panel span-4 dark-panel">
+  <div class="panel-head"><div><div class="eyebrow coral-txt">{{t("care_intelligence")|upper}}</div><h2>What changed?</h2></div></div>
+  {% if agentic_cases %}
+    {% for c in agentic_cases[:3] %}
+      <a href="{{url_for('agentic_run',run_id=c.run_id)}}" class="alert-item">
+        <span class="alert-dot {{c.severity if c.severity in ('critical','high','medium','low') else 'medium'}}"></span>
+        <div><b>{{c.first_name}} {{c.last_name}}</b><small>{{c.severity|upper}} · {{c.alert_type|lower}}, {{c.confidence}}% sensor confidence. {{c.next_action}}</small></div>
+      </a>
+    {% endfor %}
+  {% endif %}
+  {% for a in alerts %}
+  <a href="{{url_for('patient',patient_id=a.patient_id)}}" class="alert-item">
+    <span class="alert-dot {{a.severity}}"></span>
+    <div><b>{{a.first_name}} {{a.last_name}}</b><small>{{a.message}}</small></div>
+  </a>
+  {% else %}
+    {% if not agentic_cases %}<div class="empty">No open alerts. Start a patient-dynamic workflow from Agentic Care.</div>{% endif %}
+  {% endfor %}
+  <a href="{{url_for('population')}}" class="ghost-btn">Open population intelligence →</a>
+</section>
+</div>
+
+<div class="grid-12">
+<section class="panel span-5">
+  <div class="panel-head"><div><div class="eyebrow">{{t("active_work")|upper}}</div><h2>{{t("care_tasks")}}</h2></div></div>
+  {% for t in tasks %}
+    <a href="{{url_for('patient',patient_id=t.patient_id)}}" class="task-row"><span class="task-icon">✓</span><div><b>{{t.task_type|replace('_',' ')|title}}</b><small>{{t.first_name}} {{t.last_name}} · {{t.priority|upper}}</small></div></a>
+  {% else %}<div class="empty light">No open tasks.</div>{% endfor %}
+</section>
+<section class="panel span-7 value-panel">
+  <div>
+    <div class="eyebrow">{{t("one_platform")|upper}}</div>
+    <h2>Home → Care.AI → Care team → EHR/EMR</h2>
+    <p>Wearables, medical devices, cameras and smart-home sensors feed one longitudinal view. Explainable risk intelligence recommends the next action; humans remain accountable.</p>
+  </div>
+  <div class="value-icons">
+    <span>⌚<small>Devices</small></span><b>→</b><span>♥<small>Care.AI</small></span><b>→</b><span>⚕<small>Care team</small></span><b>→</b><span>⇄<small>Clinical systems</small></span>
+  </div>
+</section>
+</div>
+
+<div class="prototype-note">Prototype data and outcome signals are synthetic and are not clinically validated medical-device outputs.</div>
+{% endblock %}

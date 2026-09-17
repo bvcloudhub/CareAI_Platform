@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top-hero compact">
+  <div>
+    <a href="{{url_for('patients_page')}}" class="back">← Patients</a>
+    <div class="eyebrow">{{p.external_ref}} · {{p.city}} · {{p.living_setting}}</div>
+    <h1>{{p.first_name}} {{p.last_name}}</h1>
+    <p>{{agent_summary}}</p>
+  </div>
+  <div class="button-row">
+    <a class="outline-btn" href="{{url_for('landing')}}">⌂ Home</a>
+    <a class="outline-btn" href="{{url_for('digital_twin',patient_id=p.id)}}">◆ 3D Digital Twin</a>
+    <a class="outline-btn" href="{{url_for('copilot_patient',patient_id=p.id)}}">✦ Care Copilot</a>
+    <a class="outline-btn" target="_blank" rel="noopener" href="{{url_for('patient_portal',patient_id=p.id)}}">Patient Chat ↗</a>
+    <form method="post" action="{{url_for('orchestrate',patient_id=p.id)}}"><button>Run Care.AI Agents</button></form>
+  </div>
+</div>
+
+<div class="patient-summary">
+  <div><small>SpO₂</small><strong>{{"%.1f"|format(latest.spo2 or 0)}}%</strong></div>
+  <div><small>Heart rate</small><strong>{{"%.0f"|format(latest.heart_rate or 0)}} bpm</strong></div>
+  <div><small>Respiration</small><strong>{{"%.0f"|format(latest.resp_rate or 0)}} /min</strong></div>
+  <div><small>Blood pressure</small><strong>{{"%.0f"|format(latest.bp_sys or 0)}} / {{"%.0f"|format(latest.bp_dia or 0)}}</strong></div>
+  <div><small>Activity</small><strong>{{"%.0f"|format(latest.activity or 0)}}</strong></div>
+  <div><small>Sleep</small><strong>{{"%.0f"|format(latest.sleep or 0)}}</strong></div>
+</div>
+
+<nav class="patient-360-tabs" aria-label="Patient 360 sections">
+  <a class="{{'active' if active_tab=='overview' else ''}}" href="{{url_for('patient',patient_id=p.id,tab='overview')}}">Overview</a>
+  <a class="{{'active' if active_tab=='vitals' else ''}}" href="{{url_for('patient',patient_id=p.id,tab='vitals')}}">Vitals</a>
+  <a class="{{'active' if active_tab=='digital_twin' else ''}}" href="{{url_for('patient',patient_id=p.id,tab='digital_twin')}}">Digital Twin</a>
+  <a class="{{'active' if active_tab=='diagnostics' else ''}}" href="{{url_for('patient',patient_id=p.id,tab='diagnostics')}}">Diagnostics</a>
+  <a class="{{'active' if active_tab=='medication' else ''}}" href="{{url_for('patient',patient_id=p.id,tab='medication')}}">Medication</a>
+  <a class="{{'active' if active_tab=='care_plan' else ''}}" href="{{url_for('patient',patient_id=p.id,tab='care_plan')}}">Care plan</a>
+</nav>
+
+{% if active_tab == 'overview' %}
+<div class="grid-12">
+  <section class="panel span-8">
+    <div class="panel-head">
+      <div><div class="eyebrow">UNDERSTAND + PREDICT</div><h2>Care intelligence</h2></div>
+      <span class="badge">Explainable rules v0.2</span>
+    </div>
+    <div class="risk-grid">
+      {% for r in risks %}
+        {% if r.risk_type!='overall' %}
+        <article>
+          <div><small>{{r.risk_type|replace('_',' ')|upper}}</small><strong class="{{r.level}}">{{r.score}}</strong></div>
+          <p>{{r.explanation}}</p><span>{{r.evidence}}</span>
+        </article>
+        {% endif %}
+      {% else %}
+        <div class="empty light">No risk scores are available for this patient.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel span-4 scenario-panel">
+    <div class="eyebrow coral-txt">DEMO SCENARIOS</div>
+    <h2>Simulate deterioration</h2>
+    <p>Trigger controlled synthetic events and watch the existing CareAI agents respond.</p>
+    {% for s,label in [('copd','COPD deterioration'),('fall','Fall + immobility'),('medication','Missed medication'),('recovery','Recovery')] %}
+      {% if s=='fall' %}
+      <form method="post" action="{{url_for('simulate_fall_live',patient_id=p.id)}}"><button class="scenario {{s}}">{{label}} <span>→</span></button></form>
+      {% else %}
+      <form method="post" action="{{url_for('simulate_scenario',patient_id=p.id,scenario=s)}}"><button class="scenario {{s}}">{{label}} <span>→</span></button></form>
+      {% endif %}
+    {% endfor %}
+  </section>
+</div>
+
+<div class="grid-12">
+  <section class="panel span-7">
+    <div class="panel-head"><div><div class="eyebrow">PATIENT CONTEXT</div><h2>Conditions and current context</h2></div></div>
+    <div class="chip-grid">
+      {% for c in conditions %}<span>{{c.display}}</span>{% else %}<span>No active conditions configured</span>{% endfor %}
+    </div>
+  </section>
+  <section class="panel span-5">
+    <div class="panel-head"><div><div class="eyebrow">INTEROPERABILITY & PRIVACY</div><h2>Care controls</h2></div></div>
+    <div class="privacy-grid">
+      <div><b>FHIR</b><small><a href="{{url_for('api_fhir',patient_id=p.id)}}" target="_blank" rel="noopener">Open synthetic bundle →</a></small></div>
+      <div><b>Consent</b><small>{{'Active' if p.consent_monitoring else 'Not active'}}</small></div>
+      <div><b>Lawful basis</b><small>{{p.lawful_basis}}</small></div>
+      <div><b>Purpose</b><small>{{p.purpose_code}}</small></div>
+      <div><b>Residency</b><small>{{p.data_residency}}</small></div>
+      <div><b>Retention</b><small>{{p.retention_until}}</small></div>
+    </div>
+  </section>
+</div>
+
+{% elif active_tab == 'vitals' %}
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">MONITOR</div><h2>Continuous health signals</h2></div>
+    <span>Wearables · devices · smart home</span>
+  </div>
+  <canvas id="vitalChart" height="85"></canvas>
+</section>
+<section class="panel">
+  <div class="panel-head"><div><div class="eyebrow">RECENT MEASUREMENTS</div><h2>Vital-sign history</h2></div></div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Measured</th><th>Signal</th><th>Value</th><th>Unit</th><th>Source</th></tr></thead>
+      <tbody>
+      {% for v in vital_history %}
+        <tr><td>{{v.measured_at}}</td><td>{{v.kind|replace('_',' ')|title}}</td><td>{{v.value}}</td><td>{{v.unit}}</td><td>{{v.source}}</td></tr>
+      {% else %}
+        <tr><td colspan="5">No vital history is configured for this patient.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% elif active_tab == 'digital_twin' %}
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">DIGITAL TWIN</div><h2>Location and device context</h2></div>
+    <a class="outline-btn" href="{{url_for('digital_twin',patient_id=p.id)}}">Open full 3D Digital Twin →</a>
+  </div>
+  {% set loc=namespace(value=None, at=None) %}
+  {% for e in device_events %}{% if not loc.value and e.location %}{% set loc.value=e.location %}{% set loc.at=e.created_at %}{% endif %}{% endfor %}
+  <div class="patient-tab-summary">
+    <div><small>Latest known location</small><b>{{loc.value or 'Not configured'}}</b><span>{{loc.at or ''}}</span></div>
+    <div><small>Device events shown</small><b>{{device_events|length}}</b><span>Most recent events for this patient</span></div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Time</th><th>Device</th><th>Event</th><th>Value</th><th>Severity</th><th>Location</th></tr></thead>
+      <tbody>
+      {% for e in device_events %}
+        <tr><td>{{e.created_at}}</td><td>{{e.device_type}}</td><td>{{e.event_type|replace('_',' ')|title}}</td><td>{{e.value}}</td><td>{{e.severity}}</td><td>{{e.location or '—'}}</td></tr>
+      {% else %}
+        <tr><td colspan="6">No device events are configured for this patient.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% elif active_tab == 'diagnostics' %}
+<div class="grid-12">
+  <section class="panel span-7">
+    <div class="panel-head">
+      <div><div class="eyebrow">DIAGNOSTICS & RISK</div><h2>Patient-specific risk signals</h2></div>
+      <a class="outline-btn" href="{{url_for('ai_diagnostics')}}">Open AI Diagnostics →</a>
+    </div>
+    <div class="risk-grid">
+      {% for r in risks %}
+      <article><div><small>{{r.risk_type|replace('_',' ')|upper}}</small><strong class="{{r.level}}">{{r.score}}</strong></div><p>{{r.explanation}}</p><span>{{r.evidence}}</span></article>
+      {% else %}<div class="empty light">No risk scores are available.</div>{% endfor %}
+    </div>
+  </section>
+  <section class="panel span-5">
+    <div class="panel-head"><div><div class="eyebrow">ALERTS</div><h2>Recent alerts</h2></div></div>
+    <div class="task-stack">
+      {% for a in alerts %}<div><span class="task-icon">!</span><p><b>{{a.alert_type|replace('_',' ')|title}}</b><small>{{a.status}} · {{a.severity}} · {{a.created_at}}</small>{{a.message}}</p></div>{% else %}<div class="empty light">No alerts recorded.</div>{% endfor %}
+    </div>
+  </section>
+</div>
+
+{% elif active_tab == 'medication' %}
+<div class="grid-12">
+  <section class="panel span-6">
+    <div class="panel-head"><div><div class="eyebrow">MEDICATION</div><h2>Active medication list</h2></div></div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Medication</th><th>Dose</th><th>Schedule</th></tr></thead>
+        <tbody>
+        {% for m in meds %}<tr><td>{{m.name}}</td><td>{{m.dose}}</td><td>{{m.schedule}}</td></tr>{% else %}<tr><td colspan="3">No active medications configured.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="panel span-6">
+    <div class="panel-head"><div><div class="eyebrow">ADHERENCE</div><h2>Medication events</h2></div></div>
+    {% for m in med_events %}
+      <div class="med-row"><span class="med-status {{m.status}}"></span><div><b>{{m.status|title}}</b><small>{{m.scheduled_at}}</small></div></div>
+    {% else %}<div class="empty light">No medication adherence events are configured.</div>{% endfor %}
+  </section>
+</div>
+
+{% elif active_tab == 'care_plan' %}
+<div class="grid-12">
+  <section class="panel span-5">
+    <div class="panel-head"><div><div class="eyebrow">ACT</div><h2>Human care actions</h2></div></div>
+    <form class="care-form" method="post" action="{{url_for('task',patient_id=p.id)}}">
+      <select name="task_type"><option value="nurse_review">Nurse review</option><option value="teleconsultation">Teleconsultation</option><option value="gp_review">GP review</option><option value="home_visit">Home visit</option><option value="medication_check">Medication check</option></select>
+      <select name="priority"><option>medium</option><option>high</option><option>critical</option></select>
+      <input name="note" placeholder="Reason / handover note">
+      <button>Create task</button>
+    </form>
+    <div class="task-stack">
+      {% for t in tasks %}<div><span class="task-icon">✓</span><p><b>{{t.task_type|replace('_',' ')|title}}</b><small>{{t.status}} · {{t.priority}} · {{t.rationale}}</small></p></div>{% else %}<div class="empty light">No care tasks recorded.</div>{% endfor %}
+    </div>
+  </section>
+
+  <section class="panel span-3">
+    <div class="panel-head"><div><div class="eyebrow">NOTIFY</div><h2>Care coordination</h2></div></div>
+    <form class="care-form" method="post" action="{{url_for('notify',patient_id=p.id)}}">
+      <select name="audience"><option value="patient">Patient</option><option value="family">Family</option><option value="care_team">Care team</option></select>
+      <select name="channel"><option value="app">App</option><option value="sms_demo">SMS demo</option><option value="email_demo">Email demo</option></select>
+      <input name="message" value="Care team would like to check in.">
+      <button>Queue notification</button>
+    </form>
+    {% for n in notifications[:8] %}<div class="notification"><b>{{n.audience|title}} · {{n.channel}}</b><small>{{n.message}}</small></div>{% else %}<div class="empty light">No notifications recorded.</div>{% endfor %}
+  </section>
+
+  <section class="panel span-4">
+    <div class="panel-head"><div><div class="eyebrow">CARE JOURNEY</div><h2>Agent + human timeline</h2></div></div>
+    <div class="timeline">{% for e in timeline %}<div><span></span><p><b>{{e.event_type|replace('_',' ')|title}}</b><small>{{e.created_at}} · {{e.source}}</small>{{e.description}}</p></div>{% else %}<div class="empty light">No care journey events recorded.</div>{% endfor %}</div>
+  </section>
+</div>
+{% endif %}
+
+{% if active_tab == 'vitals' %}
+<script>
+(function () {
+  const canvas = document.getElementById('vitalChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  fetch("{{url_for('api_vitals',patient_id=p.id)}}")
+    .then(r => r.json())
+    .then(rows => {
+      const wanted = ['spo2','heart_rate','resp_rate','activity'];
+      const clean = rows.filter(x => wanted.includes(x.kind)).reverse();
+      const labels = [...new Set(clean.map(x => x.measured_at.slice(5,16).replace('T',' ')))];
+      function series(kind) {
+        const m = {};
+        clean.filter(x => x.kind === kind).forEach(x => m[x.measured_at.slice(5,16).replace('T',' ')] = x.value);
+        return labels.map(l => m[l] ?? null);
+      }
+      new Chart(canvas, {
+        type: 'line',
+        data: {labels, datasets: [
+          {label:'SpO₂', data:series('spo2'), tension:.35, borderWidth:2},
+          {label:'Heart rate', data:series('heart_rate'), tension:.35, borderWidth:2},
+          {label:'Resp rate', data:series('resp_rate'), tension:.35, borderWidth:2},
+          {label:'Activity', data:series('activity'), tension:.35, borderWidth:2}
+        ]},
+        options: {responsive:true, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom'}}, scales:{x:{grid:{display:false}}}}
+      });
+    })
+    .catch(() => { /* table remains available if chart data cannot be loaded */ });
+})();
+</script>
+{% endif %}
+{% endblock %}

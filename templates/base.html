@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{ title or "Care.AI" }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{url_for('static',filename='css/app.css')}}">
+{% block extra_head %}{% endblock %}
+<script>
+  // Apply the stored theme before first paint so the page never flashes light.
+  (function () {
+    try {
+      var t = localStorage.getItem("careai-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) { /* private mode — fall back to the system preference */ }
+  })();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="{{'authenticated' if current_user.is_authenticated else 'public'}}">
+<a class="skip-link" href="#main">{{t("skip_to_content")}}</a>
+{% if current_user.is_authenticated %}
+<header class="main-topnav">
+  <a class="top-brand" href="{{url_for('landing')}}"><span aria-hidden="true">♥</span><b>Care<em>.AI</em></b><small>{{t("healthy_ageing")}}</small></a>
+  <nav aria-label="{{t('command_centre')}}">
+    <a class="{{'active' if request.endpoint=='landing' else ''}}" href="{{url_for('landing')}}">{{t("home")}}</a>
+    <a class="{{'active' if request.endpoint=='dashboard' else ''}}" href="{{url_for('dashboard')}}">{{t("command_centre")}}</a>
+    <a class="{{'active' if request.endpoint=='patients_page' else ''}}" href="{{url_for('patients_page')}}">{{t("patients")}}</a>
+    <a class="{{'active' if request.endpoint in ['ai_diagnostics','ai_diagnostics_module'] else ''}}" href="{{url_for('ai_diagnostics')}}">{{t("ai_diagnostics")}}</a>
+    <a class="{{'active' if request.endpoint=='digital_twin' else ''}}" href="{{url_for('digital_twin',patient_id=default_twin_patient_id)}}">{{t("digital_twin")}}</a>
+    <a class="{{'active' if request.endpoint in ['copilot_home','copilot_patient'] else ''}}" href="{{url_for('copilot_home')}}">{{t("care_copilot")}}</a>
+    <a class="{{'active' if request.endpoint=='population' else ''}}" href="{{url_for('population')}}">{{t("population")}}</a>
+    <a class="{{'active' if request.endpoint=='reports' else ''}}" href="{{url_for('reports')}}">{{t("reports")}}</a>
+    <a class="{{'active' if request.endpoint=='integrations' else ''}}" href="{{url_for('integrations')}}">{{t("integrations")}}</a>
+    <a href="{{url_for('family_login')}}" target="_blank" rel="noopener">{{t("family")}} ↗</a>
+  </nav>
+  <div class="top-tools">
+    <div class="top-search">
+      <span aria-hidden="true">⌕</span>
+      <label class="visually-hidden" for="nav-search">{{t('search_patients')}}</label>
+      <input id="nav-search" type="search" data-filter-input placeholder="{{t('search_patients')}}" autocomplete="off">
+    </div>
+    <button class="theme-toggle" type="button" data-theme-toggle
+            aria-label="{{t('toggle_theme')}}" title="{{t('toggle_theme')}}">
+      <span class="icon-moon" aria-hidden="true">☾</span>
+      <span class="icon-sun" aria-hidden="true">☀</span>
+    </button>
+    <div class="lang-dd">
+      <button type="button" aria-haspopup="true">🌐 {{lang|upper}} ▾</button>
+      <div class="lang-menu">
+        <a href="{{url_for('set_language',lang_code='nl')}}">🇳🇱 Nederlands</a>
+        <a href="{{url_for('set_language',lang_code='en')}}">🇬🇧 English</a>
+        <a href="{{url_for('set_language',lang_code='de')}}">🇩🇪 Deutsch</a>
+      </div>
+    </div>
+    <div class="top-user">
+      <span class="user-avatar" aria-hidden="true">{{current_user.display_name[0]}}</span>
+      <div><b>{{current_user.display_name}}</b><small>{{current_user.role|upper}}</small></div>
+    </div>
+  </div>
+</header>
+<div class="secondary-nav">
+  <a href="{{url_for('clinician_inbox')}}">✉ {{t("patient_inbox")}}</a>
+  <a class="{{'active' if request.endpoint and request.endpoint.startswith('agentic_') else ''}}" href="{{url_for('agentic_care')}}">✦ Agentic Care</a>
+  <a class="{{'active' if request.endpoint and request.endpoint.startswith('hospital_') else ''}}" href="{{url_for('hospital_command_centre')}}">▦ Hospital AI</a>
+  <a href="{{url_for('security')}}">◉ {{t("security_gdpr")}}</a>
+  {% if current_user.role == 'admin' %}<a href="{{url_for('audit_view')}}">▤ {{t("audit_trail")}}</a>{% endif %}
+  <a href="{{url_for('logout')}}">{{t("sign_out")}}</a>
+</div>
+{% endif %}
+<main id="main" class="{{'main-shell' if current_user.is_authenticated else 'public-shell'}}">
+{% with messages=get_flashed_messages(with_categories=true) %}
+  {% for category,message in messages %}<div class="flash {{category}}" role="status">{{message}}</div>{% endfor %}
+{% endwith %}
+{% block content %}{% endblock %}
+</main>
+
+{% include "_care_bot.html" %}
+
+<script>
+  // Theme toggle — explicit choice is stored, otherwise the OS preference wins.
+  (function () {
+    var btn = document.querySelector("[data-theme-toggle]");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var root = document.documentElement;
+      var current = root.getAttribute("data-theme");
+      if (!current) {
+        current = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      var next = current === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("careai-theme", next); } catch (e) { /* non-fatal */ }
+    });
+  })();
+
+  // Live filter for the nav search box. Previously decorative — it now filters
+  // whichever patient/conversation list is on the current page.
+  (function () {
+    var input = document.querySelector("[data-filter-input]");
+    if (!input) return;
+    var SELECTOR = ".patient-row, .copilot-patient, .conversation-item, .ref-patient-row, .data-table tbody tr";
+
+    function apply() {
+      var q = input.value.trim().toLowerCase();
+      document.querySelectorAll(SELECTOR).forEach(function (row) {
+        row.hidden = q !== "" && row.textContent.toLowerCase().indexOf(q) === -1;
+      });
+    }
+    input.addEventListener("input", apply);
+    input.addEventListener("search", apply);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { input.value = ""; apply(); }
+    });
+  })();
+</script>
+<script src="{{url_for('static',filename='js/care_bot.js')}}" defer></script>
+</body>
+</html>

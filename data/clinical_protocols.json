@@ -1,0 +1,44 @@
+[
+  {
+    "id": "DEMO-RESP-001",
+    "title": "Demo respiratory deterioration response",
+    "topics": ["respiratory_deterioration", "copd", "hypoxia", "oxygen"],
+    "content": "DEMO PROTOCOL ONLY. When a monitored inpatient shows a sustained fall in oxygen saturation, rising respiratory rate or increasing oxygen requirement, the responsible nurse should perform prompt bedside assessment, confirm sensor quality, review work of breathing and current oxygen delivery, and escalate to the responsible clinician according to the hospital's approved rapid-response pathway. The AI must not independently change oxygen or medication orders."
+  },
+  {
+    "id": "DEMO-SEPSIS-001",
+    "title": "Demo infection / sepsis deterioration response",
+    "topics": ["infection_sepsis_pattern", "fever", "lactate", "hypotension"],
+    "content": "DEMO PROTOCOL ONLY. A combination of fever or hypothermia, tachycardia, tachypnoea, hypotension, altered consciousness or abnormal inflammatory / perfusion markers should trigger urgent human clinical assessment. The clinician determines whether a local sepsis pathway applies and which investigations or treatments are appropriate."
+  },
+  {
+    "id": "DEMO-HEMO-001",
+    "title": "Demo hemodynamic instability response",
+    "topics": ["hemodynamic_instability", "hypotension", "map", "shock"],
+    "content": "DEMO PROTOCOL ONLY. New hypotension or a low mean arterial pressure requires immediate validation of the measurement and bedside clinical review. Escalation level is determined by the responsible clinical team using local rapid-response criteria. The AI provides evidence and prioritisation only."
+  },
+  {
+    "id": "DEMO-AKI-001",
+    "title": "Demo renal deterioration response",
+    "topics": ["aki_pattern", "creatinine", "urine output", "renal"],
+    "content": "DEMO PROTOCOL ONLY. A meaningful rise in creatinine or falling urine output should prompt review of fluid balance, recent trends, medication exposure and the overall clinical picture. Medication changes, fluid treatment and specialist referral remain clinician decisions."
+  },
+  {
+    "id": "DEMO-MED-001",
+    "title": "Demo medication administration exception response",
+    "topics": ["medication_administration", "missed dose", "omission", "medication"],
+    "content": "DEMO PROTOCOL ONLY. Repeated omitted or delayed medication administrations should be reconciled against the medication administration record. The responsible nurse or pharmacist verifies the reason and determines whether prescriber review is required. The AI must not independently advise a patient to take, stop or change a medicine."
+  },
+  {
+    "id": "DEMO-FALL-001",
+    "title": "Demo inpatient fall response",
+    "topics": ["inpatient_fall", "fall", "mobility", "post-fall"],
+    "content": "DEMO PROTOCOL ONLY. A reported inpatient fall should trigger a human post-fall assessment, review of injury indicators, mobility and contributing factors, and appropriate observation or escalation under the hospital's local fall pathway. The AI may summarise sensor and note evidence but does not clear the patient clinically."
+  },
+  {
+    "id": "DEMO-GOV-001",
+    "title": "Care.AI human-in-the-loop governance",
+    "topics": ["governance", "human approval", "clinical copilot", "triage"],
+    "content": "Care.AI is decision support in this demonstration. Rules and machine-learning signals can prioritise cases; the language model can summarise and contextualise evidence. A responsible nurse or physician must review the evidence before downstream clinical workflow actions are executed. LLM output must not be treated as diagnosis, prescription or autonomous clinical instruction."
+  }
+]

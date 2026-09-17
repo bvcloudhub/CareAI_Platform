@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="family-login-page">
+  <section class="family-login-hero">
+    <div class="brand"><span class="mark">♥</span> Care<span>.AI</span></div>
+    <div><div class="eyebrow light">FAMILY CARE ACCESS</div><h1>Stay connected to the people you care about.</h1>
+    <p>With delegated patient consent, family members can see a simple health summary, care alerts, recent activity and communicate with the care team.</p></div>
+  </section>
+  <form method="post" class="login-card">
+    <div class="eyebrow">PIETER BAKKER · FAMILY DEMO</div><h2>Family sign in</h2>
+    <label>Email</label><input name="email" value="laura.bakker@demo.nl">
+    <label>Password</label><input name="password" type="password" value="family123">
+    <button>Open family dashboard</button>
+    <small>Demo: Laura Bakker (daughter) · delegated access to NL-CR-003.</small>
+  </form>
+</div>
+{% endblock %}
