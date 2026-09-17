@@ -1,7 +1,14 @@
 from services.db import query_db,execute_db
 
 def _latest(pid,kind,default=None):
-    r=query_db("SELECT value FROM vitals WHERE patient_id=? AND kind=? ORDER BY measured_at DESC LIMIT 1",(pid,kind),one=True)
+    r=query_db("""
+        SELECT value
+        FROM vitals
+        WHERE patient_id=? AND kind=?
+        ORDER BY CASE WHEN source='simulator' THEN 1 ELSE 0 END,
+                 measured_at DESC
+        LIMIT 1
+    """,(pid,kind),one=True)
     return r["value"] if r else default
 
 def _condition(pid,text):
