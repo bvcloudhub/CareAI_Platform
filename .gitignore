@@ -28,3 +28,6 @@ static/uploads/patients/*
 
 uploads/diagnostics/
 static/cam/
+Care_AI_Notes/
+migrations.*
+appCopy.*

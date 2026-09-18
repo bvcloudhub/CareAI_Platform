@@ -1,11 +1,139 @@
 {% extends "base.html" %}
+{% macro hidden_report_filters() -%}
+  <input type="hidden" name="report_type" value="{{filters.report_type}}">
+  <input type="hidden" name="date_from" value="{{filters.date_from}}">
+  <input type="hidden" name="date_to" value="{{filters.date_to}}">
+  <input type="hidden" name="patient_id" value="{{filters.patient_id or ''}}">
+  <input type="hidden" name="risk" value="{{filters.risk}}">
+  <input type="hidden" name="condition" value="{{filters.condition}}">
+  <input type="hidden" name="clinician_id" value="{{filters.clinician_id or ''}}">
+  <input type="hidden" name="event_type" value="{{filters.event_type}}">
+  <input type="hidden" name="status" value="{{filters.status}}">
+  <input type="hidden" name="source" value="{{filters.source}}">
+  <input type="hidden" name="location" value="{{filters.location}}">
+{%- endmacro %}
 {% block content %}
-<div class="page-head"><div><div class="eyebrow">{{t("reports")|upper}}</div><h1>{{t("reports")}}</h1><p>Operational and care-performance overview for the remote-care service.</p></div></div>
-<section class="kpis">
-<article><small>{{t("active_patients")}}</small><strong>{{metrics.total}}</strong><span>Care.AI population</span></article>
-<article><small>{{t("need_attention")}}</small><strong>{{(metrics.attention or 0)+(metrics.high or 0)+(metrics.critical or 0)}}</strong><span>Risk-led review</span></article>
-<article><small>{{t("open_care_tasks")}}</small><strong>{{metrics.open_tasks}}</strong><span>Care coordination</span></article>
-<article><small>{{t("interventions")}}</small><strong>{{metrics.interventions_30d}}</strong><span>Last 30 days</span></article>
+<div class="page-head analytics-page-head">
+  <div>
+    <div class="eyebrow">REPORTING CENTRE</div>
+    <h1>Reports</h1>
+    <p>Generate role-scoped reports from the live CareAI database. No placeholder statistics are used.</p>
+  </div>
+  <div class="analytics-scope-note">
+    <small>Access scope</small>
+    <b>{{current_user.role|upper}}</b>
+    <span>Backend report queries enforce the same clinical role and patient assignment scope.</span>
+  </div>
+</div>
+
+<section class="analytics-workflow" aria-label="Report workflow">
+  <span><b>1</b>Select report</span><i>→</i><span><b>2</b>Apply filters</span><i>→</i><span><b>3</b>Generate</span><i>→</i><span><b>4</b>Preview</span><i>→</i><span><b>5</b>Download</span>
 </section>
-<section class="panel value-panel"><div><div class="eyebrow">CARE.AI</div><h2>{{t("one_platform")}}</h2><p>Monitor → Understand → Predict → Act → Improve.</p></div></section>
+
+<section class="panel analytics-filter-panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">REPORT SETUP</div><h2>Generate a report</h2></div>
+    <a class="outline-btn" href="{{url_for('reports')}}">Reset filters</a>
+  </div>
+  <form class="analytics-filter-grid report-filter-grid" method="post" action="{{url_for('reports_generate')}}">
+    <label class="span-2"><span>Report type</span>
+      <select name="report_type" required>
+        {% for key,definition in report_definitions.items() %}
+        <option value="{{key}}" {{'selected' if filters.report_type==key}}>{{definition.label}}</option>
+        {% endfor %}
+      </select>
+      <small>{{report_definitions[filters.report_type].description}}</small>
+    </label>
+    <label><span>Date from</span><input type="date" name="date_from" value="{{filters.date_from}}"></label>
+    <label><span>Date to</span><input type="date" name="date_to" value="{{filters.date_to}}"></label>
+    <label><span>Patient</span>
+      <select name="patient_id">
+        <option value="">All authorised patients</option>
+        {% for p in options.patients %}<option value="{{p.id}}" {{'selected' if filters.patient_id==p.id}}>{{p.external_ref}} · {{p.first_name}} {{p.last_name}}</option>{% endfor %}
+      </select>
+    </label>
+    <label><span>Risk level</span>
+      <select name="risk">
+        <option value="all" {{'selected' if filters.risk=='all'}}>All risks</option>
+        <option value="high_critical" {{'selected' if filters.risk=='high_critical'}}>High / Critical</option>
+        <option value="critical" {{'selected' if filters.risk=='critical'}}>Critical</option>
+        <option value="high" {{'selected' if filters.risk=='high'}}>High</option>
+        <option value="medium" {{'selected' if filters.risk=='medium'}}>Medium</option>
+        <option value="low" {{'selected' if filters.risk=='low'}}>Low</option>
+      </select>
+    </label>
+    <label><span>Condition</span>
+      <select name="condition"><option value="">All conditions</option>{% for c in options.conditions %}<option value="{{c}}" {{'selected' if filters.condition==c}}>{{c}}</option>{% endfor %}</select>
+    </label>
+    <label><span>Assigned clinician</span>
+      <select name="clinician_id"><option value="">All authorised</option>{% for c in options.clinicians %}<option value="{{c.id}}" {{'selected' if filters.clinician_id==c.id}}>{{c.display_name}} · {{c.role|upper}}</option>{% endfor %}</select>
+    </label>
+    <label><span>Event type</span>
+      <select name="event_type"><option value="">All event types</option>{% for e in options.event_types %}<option value="{{e}}" {{'selected' if filters.event_type==e}}>{{e}}</option>{% endfor %}</select>
+    </label>
+    <label><span>Status</span>
+      <select name="status"><option value="">All statuses</option>{% for status in options.statuses %}<option value="{{status}}" {{'selected' if filters.status==status}}>{{status|replace('_',' ')|title}}</option>{% endfor %}</select>
+    </label>
+    <label><span>Device / source</span>
+      <select name="source"><option value="">All sources</option>{% for s in options.sources %}<option value="{{s}}" {{'selected' if filters.source==s}}>{{s}}</option>{% endfor %}</select>
+    </label>
+    <label><span>Location</span>
+      <select name="location"><option value="">All locations</option>{% for loc in options.locations %}<option value="{{loc}}" {{'selected' if filters.location==loc}}>{{loc}}</option>{% endfor %}</select>
+    </label>
+    <div class="analytics-filter-actions span-2">
+      <button type="submit">Generate report</button>
+      <span>Filters that do not apply to a selected report type are safely ignored by that report query.</span>
+    </div>
+  </form>
+</section>
+
+{% if report %}
+<section class="panel report-preview-panel">
+  <div class="panel-head">
+    <div>
+      <div class="eyebrow">PREVIEW</div>
+      <h2>{{report.title}}</h2>
+      <p>{{report.description}}</p>
+    </div>
+    <div class="report-download-actions">
+      <form method="post" action="{{url_for('reports_download',fmt='pdf')}}">{{hidden_report_filters()}}<button class="outline-btn" type="submit">Download PDF</button></form>
+      <form method="post" action="{{url_for('reports_download',fmt='csv')}}">{{hidden_report_filters()}}<button class="outline-btn" type="submit">Download CSV</button></form>
+      {% if options.excel_available %}<form method="post" action="{{url_for('reports_download',fmt='xlsx')}}">{{hidden_report_filters()}}<button class="outline-btn" type="submit">Download Excel</button></form>{% endif %}
+    </div>
+  </div>
+  <div class="report-meta-line"><span>Generated {{report.generated_at}}</span><span>By {{report.generated_by}}</span><span>{{report.rows|length}} row{{'' if report.rows|length==1 else 's'}}</span></div>
+  <div class="report-filter-chips" aria-label="Selected report filters">
+    {% for key,value in report.filters.items() %}{% if key != 'report_type' and value not in [none,'','all'] %}<span><b>{{key|replace('_',' ')|title}}:</b> {{value}}</span>{% endif %}{% endfor %}
+  </div>
+  <div class="report-summary-grid">
+    {% for item in report.summary %}<article><small>{{item.label}}</small><strong>{{item.value}}</strong></article>{% endfor %}
+  </div>
+  {% if report.rows %}
+  <div class="table-wrap report-table-wrap">
+    <table class="data-table report-table">
+      <thead><tr>{% for c in report.columns %}<th>{{c.label}}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in report.rows[:100] %}
+        <tr>{% for c in report.columns %}<td>{{row[c.key] if row[c.key] is not none else ''}}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if report.rows|length > 100 %}<p class="analytics-footnote">Preview shows the first 100 rows. Downloads include the full result set. PDF export is capped at 500 table rows for readability.</p>{% endif %}
+  {% else %}
+  <div class="analytics-empty-state"><b>No matching data</b><p>{{report.empty_message}}</p></div>
+  {% endif %}
+</section>
+{% else %}
+<section class="panel analytics-empty-state"><b>Choose a report and generate a preview</b><p>The report will be built from the current CareAI database using your authorised patient scope.</p></section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head"><div><div class="eyebrow">AUDITABLE ACTIVITY</div><h2>Recent report activity</h2></div><span>Your recent generate/download actions</span></div>
+  {% if recent_reports %}
+  <div class="report-activity-list">
+    {% for item in recent_reports %}<article><b>{{item.action|replace('_',' ')|title}}</b><span>{{item.created_at}}</span><small>{{item.details}}</small></article>{% endfor %}
+  </div>
+  {% else %}<div class="analytics-empty-state compact"><p>No reports have been generated by this user yet.</p></div>{% endif %}
+</section>
 {% endblock %}

@@ -29,3 +29,5 @@ python-dotenv>=1.0.1
 
 # Monitoring PDF export
 reportlab>=4.2.0
+# Reports Excel export
+openpyxl>=3.1.5

@@ -1,26 +1,106 @@
 {% extends "base.html" %}
+{% macro population_url(cohort='') -%}
+{{ url_for('population', risk=filters.risk, condition=filters.condition, age_group=filters.age_group, sex=filters.sex, location=filters.location, clinician_id=filters.clinician_id or '', wearable=filters.wearable, status=filters.status, date_from=filters.date_from, date_to=filters.date_to, cohort=cohort) }}
+{%- endmacro %}
 {% block content %}
-<div class="top-hero"><div><div class="eyebrow">POPULATION HEALTH</div><h1>From individual signals to system intelligence</h1><p>Operational visibility across the monitored elderly population.</p></div></div>
-<section class="kpis">
-  <article><small>MONITORED</small><strong>{{metrics.total}}</strong><span>Active demo patients</span></article>
-  <article><small>STABLE</small><strong>{{metrics.stable or 0}}</strong><span>No priority signal</span></article>
-  <article><small>ATTENTION</small><strong>{{metrics.attention or 0}}</strong><span>Review during care round</span></article>
-  <article><small>HIGH / CRITICAL</small><strong>{{(metrics.high or 0)+(metrics.critical or 0)}}</strong><span>Human review required</span></article>
-  <article><small>OPEN TASKS</small><strong>{{metrics.open_tasks}}</strong><span>Care coordination workload</span></article>
-</section>
-<div class="grid-12">
-<section class="panel span-4"><div class="panel-head"><h2>Risk distribution</h2></div><canvas id="riskChart"></canvas></section>
-<section class="panel span-4"><div class="panel-head"><h2>Care geography</h2></div><canvas id="cityChart"></canvas></section>
-<section class="panel span-4"><div class="panel-head"><h2>Chronic conditions</h2></div><canvas id="conditionChart"></canvas></section>
+<div class="page-head analytics-page-head">
+  <div>
+    <div class="eyebrow">POPULATION HEALTH</div>
+    <h1>Population intelligence</h1>
+    <p>Live cohort-level insight from the same patient, risk, condition, wearable, alert, consultation and Agentic Care records used across CareAI.</p>
+  </div>
+  <div class="analytics-scope-note"><small>Visible population</small><b>{{metrics.total}} / {{available_total}}</b><span>Filtered from the patients available to your {{current_user.role}} account.</span></div>
 </div>
-<section class="panel value-panel">
-  <div><div class="eyebrow">WHY THIS MATTERS</div><h2>One operational view for hospitals, clinics and remote-care providers</h2><p>See demand earlier, prioritise limited staff, track interventions and understand which care pathways are creating pressure.</p></div>
-  <div class="impact-row"><span><b>{{metrics.interventions_30d}}</b><small>30-day interventions</small></span><span><b>{{metrics.open_alerts}}</b><small>Open alerts</small></span><span><b>{{metrics.open_tasks}}</b><small>Care tasks</small></span></div>
+
+<section class="panel analytics-filter-panel">
+  <div class="panel-head"><div><div class="eyebrow">COHORT FILTERS</div><h2>Filter the population</h2></div><a class="outline-btn" href="{{url_for('population')}}">Reset filters</a></div>
+  <form class="analytics-filter-grid population-filter-grid" method="get" action="{{url_for('population')}}">
+    <label><span>Risk level</span><select name="risk"><option value="all">All risks</option><option value="high_critical" {{'selected' if filters.risk=='high_critical'}}>High / Critical</option><option value="critical" {{'selected' if filters.risk=='critical'}}>Critical</option><option value="high" {{'selected' if filters.risk=='high'}}>High</option><option value="medium" {{'selected' if filters.risk=='medium'}}>Medium</option><option value="low" {{'selected' if filters.risk=='low'}}>Low</option></select></label>
+    <label><span>Condition</span><select name="condition"><option value="">All conditions</option>{% for c in options.conditions %}<option value="{{c}}" {{'selected' if filters.condition==c}}>{{c}}</option>{% endfor %}</select></label>
+    <label><span>Age group</span><select name="age_group"><option value="all">All ages</option><option value="under_65" {{'selected' if filters.age_group=='under_65'}}>Under 65</option><option value="65_74" {{'selected' if filters.age_group=='65_74'}}>65–74</option><option value="75_84" {{'selected' if filters.age_group=='75_84'}}>75–84</option><option value="85_plus" {{'selected' if filters.age_group=='85_plus'}}>85+</option></select></label>
+    <label><span>Sex</span><select name="sex"><option value="all">All / not recorded</option><option value="F" {{'selected' if filters.sex=='F'}}>Female</option><option value="M" {{'selected' if filters.sex=='M'}}>Male</option><option value="X" {{'selected' if filters.sex=='X'}}>X</option><option value="U" {{'selected' if filters.sex=='U'}}>Unknown</option></select></label>
+    <label><span>Location</span><select name="location"><option value="">All locations</option>{% for loc in options.locations %}<option value="{{loc}}" {{'selected' if filters.location==loc}}>{{loc}}</option>{% endfor %}</select></label>
+    <label><span>Assigned clinician</span><select name="clinician_id"><option value="">All authorised</option>{% for c in options.clinicians %}<option value="{{c.id}}" {{'selected' if filters.clinician_id==c.id}}>{{c.display_name}} · {{c.role|upper}}</option>{% endfor %}</select></label>
+    <label><span>Wearable / device</span><select name="wearable"><option value="all">All</option><option value="connected" {{'selected' if filters.wearable=='connected'}}>Connected / data present</option><option value="not_connected" {{'selected' if filters.wearable=='not_connected'}}>No device data</option><option value="recent" {{'selected' if filters.wearable=='recent'}}>Data in selected period</option><option value="stale" {{'selected' if filters.wearable=='stale'}}>No data in selected period</option></select></label>
+    <label><span>Patient status</span><select name="status"><option value="active" {{'selected' if filters.status=='active'}}>Active</option><option value="archived" {{'selected' if filters.status=='archived'}}>Archived</option><option value="all" {{'selected' if filters.status=='all'}}>All</option></select></label>
+    <label><span>Activity date from</span><input type="date" name="date_from" value="{{filters.date_from}}"></label>
+    <label><span>Activity date to</span><input type="date" name="date_to" value="{{filters.date_to}}"></label>
+    <input type="hidden" name="cohort" value="{{filters.cohort}}">
+    <div class="analytics-filter-actions span-2"><button type="submit">Apply filters</button><span>Date range controls recent alerts, consultations, Agentic events and device-data cohorts.</span></div>
+  </form>
 </section>
+
+<section class="kpis population-kpis">
+  <a href="{{population_url('')}}"><article><small>SELECTED PATIENTS</small><strong>{{metrics.total}}</strong><span>Current filter result</span></article></a>
+  <a href="{{population_url('high_critical')}}"><article><small>HIGH / CRITICAL</small><strong>{{metrics.high_critical}}</strong><span>Priority review</span></article></a>
+  <a href="{{population_url('medium_risk')}}"><article><small>MEDIUM RISK</small><strong>{{metrics.medium}}</strong><span>Monitor closely</span></article></a>
+  <a href="{{population_url('low_risk')}}"><article><small>LOW RISK</small><strong>{{metrics.low}}</strong><span>Lower current priority</span></article></a>
+  <a href="{{population_url('recent_device')}}"><article><small>RECENT DEVICE DATA</small><strong>{{metrics.wearable_recent}}</strong><span>Selected activity period</span></article></a>
+  <a href="{{population_url('recent_alerts')}}"><article><small>RECENT ALERT PATIENTS</small><strong>{{metrics.recent_alerts}}</strong><span>Selected activity period</span></article></a>
+  <a href="{{population_url('recent_consultations')}}"><article><small>RECENT CONSULTATIONS</small><strong>{{metrics.recent_consultations}}</strong><span>Selected activity period</span></article></a>
+  <a href="{{population_url('open_agentic')}}"><article><small>OPEN AGENTIC</small><strong>{{metrics.open_agentic}}</strong><span>Current workflows</span></article></a>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><div class="eyebrow">COHORTS</div><h2>Drill into a cohort</h2></div>{% if filters.cohort %}<a class="outline-btn" href="{{population_url('')}}">Clear cohort</a>{% endif %}</div>
+  <div class="cohort-grid">
+    {% for cohort in cohorts %}
+    <a class="cohort-card {{'active' if filters.cohort==cohort.key}}" href="{{population_url(cohort.key)}}"><small>{{cohort.label}}</small><strong>{{cohort.value}}</strong><span>View matching patients →</span></a>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="grid-12 population-chart-grid">
+  <section class="panel span-4"><div class="panel-head"><h2>Patients by risk</h2></div>{% if charts.risk|sum(attribute='value') %}<canvas id="riskChart"></canvas>{% else %}<div class="analytics-empty-state compact"><p>No risk data for this cohort.</p></div>{% endif %}</section>
+  <section class="panel span-4"><div class="panel-head"><h2>Patients by condition</h2></div>{% if charts.conditions %}<canvas id="conditionChart"></canvas>{% else %}<div class="analytics-empty-state compact"><p>No condition data for this cohort.</p></div>{% endif %}</section>
+  <section class="panel span-4"><div class="panel-head"><h2>Wearable / device coverage</h2></div>{% if metrics.total %}<canvas id="wearableChart"></canvas>{% else %}<div class="analytics-empty-state compact"><p>No patients in this cohort.</p></div>{% endif %}</section>
+  <section class="panel span-4"><div class="panel-head"><h2>Alerts over time</h2></div>{% if charts.alerts %}<canvas id="alertChart"></canvas>{% else %}<div class="analytics-empty-state compact"><p>No alerts in the selected period.</p></div>{% endif %}</section>
+  <section class="panel span-4"><div class="panel-head"><h2>Consultations over time</h2></div>{% if charts.consultations %}<canvas id="consultChart"></canvas>{% else %}<div class="analytics-empty-state compact"><p>No consultations in the selected period.</p></div>{% endif %}</section>
+  <section class="panel span-4"><div class="panel-head"><h2>Agentic events by type</h2></div>{% if charts.agentic_types %}<canvas id="agenticChart"></canvas>{% else %}<div class="analytics-empty-state compact"><p>No Agentic Care events in the selected period.</p></div>{% endif %}</section>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <div><div class="eyebrow">PATIENT DRILL-DOWN</div><h2>{{patients|length}} matching patient{{'' if patients|length==1 else 's'}}</h2></div>
+    {% if filters.cohort %}<span>Active cohort: {{filters.cohort|replace('_',' ')|title}}</span>{% endif %}
+  </div>
+  {% if patients %}
+  <div class="table-wrap population-table-wrap">
+    <table class="data-table population-table">
+      <thead><tr><th>Patient</th><th>Age</th><th>Location</th><th>Conditions</th><th>Risk</th><th>Assigned clinician</th><th>Latest alert/event</th><th>Latest vitals</th><th>Wearable</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for p in patients %}
+      <tr>
+        <td><b>{{p.external_ref}}</b><small>{{p.first_name}} {{p.last_name}}</small></td>
+        <td>{{p.age if p.age is not none else '—'}}</td>
+        <td>{{p.city or '—'}}</td>
+        <td class="clinical-summary">{{p.condition_summary or 'No active condition recorded'}}</td>
+        <td><span class="risk {{p.priority}}">{{p.priority|upper}}</span>{% if p.risk_score %}<small>Score {{p.risk_score}}</small>{% endif %}</td>
+        <td>{{p.assigned_professional}}</td>
+        <td>{{p.latest_activity}}{% if p.latest_activity_at %}<small>{{p.latest_activity_at}}</small>{% endif %}</td>
+        <td>{{p.latest_vitals_at or 'No vitals'}}</td>
+        <td><span class="wearable-status {{'active' if p.wearable_connected}}">{{'Data present' if p.wearable_connected else 'No data'}}</span>{% if p.latest_device_at %}<small>{{p.latest_device_at}}</small>{% endif %}</td>
+        <td><div class="patient-row-actions"><a href="{{url_for('patient',patient_id=p.id)}}">Patient 360</a><a href="{{url_for('patient',patient_id=p.id,tab='vitals')}}">Vitals</a><a href="{{url_for('agentic_care')}}">Agentic Care</a></div></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="analytics-empty-state"><b>No patients match these filters</b><p>Change or reset the filters. CareAI will not substitute demo rows.</p></div>{% endif %}
+</section>
+
 <script>
-const theme=['#ee6f51','#2f6b52','#f0a14a','#164c3a','#8fbda9','#d8c6a4'];
-new Chart(document.getElementById('riskChart'),{type:'doughnut',data:{labels:{{risk_dist|map(attribute='label')|list|tojson}},datasets:[{data:{{risk_dist|map(attribute='value')|list|tojson}},backgroundColor:theme}]},options:{plugins:{legend:{position:'bottom'}}}});
-new Chart(document.getElementById('cityChart'),{type:'bar',data:{labels:{{city_dist|map(attribute='label')|list|tojson}},datasets:[{label:'People',data:{{city_dist|map(attribute='value')|list|tojson}},backgroundColor:'#2f6b52'}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{precision:0}}}}});
-new Chart(document.getElementById('conditionChart'),{type:'bar',data:{labels:{{condition_dist|map(attribute='label')|list|tojson}},datasets:[{label:'People',data:{{condition_dist|map(attribute='value')|list|tojson}},backgroundColor:'#ee6f51'}]},options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}}});
+(function(){
+  function chart(id, type, labels, values, opts){
+    var el=document.getElementById(id); if(!el) return;
+    new Chart(el,{type:type,data:{labels:labels,datasets:[{label:(opts&&opts.label)||'Patients',data:values}]},options:Object.assign({responsive:true,maintainAspectRatio:false,plugins:{legend:{display:type==='doughnut',position:'bottom'}},scales:type==='doughnut'?{}:{y:{beginAtZero:true,ticks:{precision:0}}}},(opts&&opts.options)||{})});
+  }
+  var risk={{charts.risk|tojson}}; chart('riskChart','doughnut',risk.map(x=>x.label),risk.map(x=>x.value));
+  var cond={{charts.conditions|tojson}}; chart('conditionChart','bar',cond.map(x=>x.label),cond.map(x=>x.value),{options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}}});
+  var wear={{charts.wearable|tojson}}; chart('wearableChart','doughnut',wear.map(x=>x.label),wear.map(x=>x.value));
+  var alerts={{charts.alerts|tojson}}; chart('alertChart','line',alerts.map(x=>x.label),alerts.map(x=>x.value),{label:'Alerts'});
+  var consult={{charts.consultations|tojson}}; chart('consultChart','line',consult.map(x=>x.label),consult.map(x=>x.value),{label:'Consultations'});
+  var agentic={{charts.agentic_types|tojson}}; chart('agenticChart','bar',agentic.map(x=>x.label),agentic.map(x=>x.value),{label:'Events'});
+})();
 </script>
 {% endblock %}

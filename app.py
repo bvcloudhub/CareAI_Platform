@@ -59,7 +59,23 @@ from services.monitoring_report_service import (
     load_monitoring_points,
 )
 from services.fhir_service import patient_bundle
-from services.population_service import population_metrics
+from services.population_service import (
+    normalise_population_filters,
+    population_dashboard,
+    population_filter_options,
+    population_metrics,
+)
+from services.reporting_service import (
+    REPORT_DEFINITIONS,
+    build_csv as build_careai_report_csv,
+    build_excel as build_careai_report_excel,
+    build_pdf as build_careai_report_pdf,
+    generate_report as generate_careai_report,
+    normalise_report_filters,
+    recent_report_activity,
+    report_filename as careai_report_filename,
+    report_filter_options,
+)
 from services.dashboard_metrics_service import (
     dashboard_metrics,
     landing_patient_overview,
@@ -1490,30 +1506,94 @@ def patient_reactivate(patient_id):
 
 @app.route("/reports")
 @login_required
+@role_required("admin", "nurse", "gp")
 def reports():
-    metrics=population_metrics()
-    return render_template("reports.html",metrics=metrics)
+    filters = normalise_report_filters(request.args)
+    options = report_filter_options(user_id=current_user.id, role=current_user.role)
+    audit("VIEW_REPORTS")
+    return render_template(
+        "reports.html",
+        title="Reports",
+        report_definitions=REPORT_DEFINITIONS,
+        filters=filters,
+        options=options,
+        report=None,
+        recent_reports=recent_report_activity(user_id=current_user.id),
+    )
+
+
+@app.route("/reports/generate", methods=["POST"])
+@login_required
+@role_required("admin", "nurse", "gp")
+def reports_generate():
+    filters = normalise_report_filters(request.form)
+    result = generate_careai_report(
+        user_id=current_user.id, role=current_user.role,
+        generated_by=current_user.display_name, filters=filters,
+    )
+    audit("GENERATE_REPORT", details=json.dumps({
+        "report_type": filters["report_type"],
+        "row_count": len(result["rows"]),
+        "filters": filters,
+    }, default=str))
+    return render_template(
+        "reports.html",
+        title="Reports",
+        report_definitions=REPORT_DEFINITIONS,
+        filters=filters,
+        options=report_filter_options(user_id=current_user.id, role=current_user.role),
+        report=result,
+        recent_reports=recent_report_activity(user_id=current_user.id),
+    )
+
+
+@app.route("/reports/download/<fmt>", methods=["POST"])
+@login_required
+@role_required("admin", "nurse", "gp")
+def reports_download(fmt):
+    fmt = (fmt or "").strip().lower()
+    if fmt not in {"pdf", "csv", "xlsx"}:
+        abort(404)
+    filters = normalise_report_filters(request.form)
+    result = generate_careai_report(
+        user_id=current_user.id, role=current_user.role,
+        generated_by=current_user.display_name, filters=filters,
+    )
+    if fmt == "pdf":
+        payload = build_careai_report_pdf(result)
+        mimetype = "application/pdf"
+    elif fmt == "csv":
+        payload = build_careai_report_csv(result)
+        mimetype = "text/csv; charset=utf-8"
+    else:
+        try:
+            payload = build_careai_report_excel(result)
+        except RuntimeError as exc:
+            flash(str(exc), "warning")
+            return redirect(url_for("reports"))
+        mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    audit("DOWNLOAD_REPORT", details=json.dumps({
+        "report_type": filters["report_type"], "format": fmt, "row_count": len(result["rows"])
+    }))
+    return send_file(
+        BytesIO(payload), mimetype=mimetype, as_attachment=True,
+        download_name=careai_report_filename(result, fmt),
+    )
+
 
 @app.route("/population")
 @login_required
+@role_required("admin", "nurse", "gp")
 def population():
-    metrics=population_metrics()
-    risk_dist=query_db("""
-        SELECT COALESCE(current_status,'stable') label, COUNT(*) value
-        FROM patients WHERE active=1 GROUP BY current_status
-    """)
-    city_dist=query_db("SELECT city label, COUNT(*) value FROM patients WHERE active=1 GROUP BY city ORDER BY value DESC")
-    condition_dist=query_db("""
-        SELECT display label, COUNT(*) value FROM conditions WHERE active=1
-        GROUP BY display ORDER BY value DESC LIMIT 10
-    """)
-    interventions=query_db("""
-        SELECT date(created_at) day, COUNT(*) value FROM care_tasks
-        GROUP BY date(created_at) ORDER BY day DESC LIMIT 14
-    """)
-    audit("VIEW_POPULATION_ANALYTICS")
-    return render_template("population.html",metrics=metrics,risk_dist=risk_dist,city_dist=city_dist,
-                           condition_dist=condition_dist,interventions=interventions)
+    filters = normalise_population_filters(request.args)
+    data = population_dashboard(user_id=current_user.id, role=current_user.role, filters=filters)
+    options = population_filter_options(user_id=current_user.id, role=current_user.role)
+    audit("VIEW_POPULATION_ANALYTICS", details=json.dumps(filters))
+    return render_template(
+        "population.html", title="Population", filters=filters, options=options,
+        metrics=data["metrics"], patients=data["patients"], cohorts=data["cohorts"],
+        charts=data["charts"], available_total=data["available_total"],
+    )
 
 @app.route("/integrations")
 @login_required
