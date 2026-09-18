@@ -16,7 +16,7 @@
 </div>
 
 <section class="panel">
-  <div class="panel-head"><div><div class="eyebrow">NETHERLANDS / EU INTEGRATION OPTIONS</div><h2>Adapter catalogue for pilots</h2></div><span class="badge">Verify vendor/API terms before procurement</span></div>
+  <div class="panel-head"><div><div class="eyebrow">NETHERLANDS / EU INTEGRATION OPTIONS</div><h2>Adapter catalogue for pilots</h2></div><div class="integration-panel-actions"><a class="outline-btn" href="{{url_for('device_json_generator')}}">Device JSON Generator</a><span class="badge">Verify vendor/API terms before procurement</span></div></div>
   <div class="integration-grid">
     {% for i in items %}
     <article>
@@ -24,6 +24,9 @@
       <p><strong>Connection:</strong> {{i.connection_method}}</p>
       <p><strong>Data:</strong> {{i.data_types}}</p>
       <small>{{i.notes}}</small>
+      {% if adapter_cards.get(i.name) %}
+      <a class="integration-adapter-link" href="{{url_for('device_adapter',adapter_key=adapter_cards.get(i.name))}}">Configure / Open Adapter →</a>
+      {% endif %}
     </article>
     {% endfor %}
   </div>

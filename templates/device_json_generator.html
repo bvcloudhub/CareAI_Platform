@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top-hero compact device-adapter-hero">
+  <div>
+    <a class="back" href="{{url_for('integrations')}}">← Integrations</a>
+    <div class="eyebrow">DEVICE JSON SIMULATOR</div>
+    <h1>Generate device-specific JSON</h1>
+    <p>Create patient-bound test payloads that use the same adapter contract intended for future BLE gateways and vendor APIs.</p>
+  </div>
+  <a class="outline-btn" href="{{url_for('device_adapter',adapter_key=selected_adapter)}}">Open {{adapter.name}} →</a>
+</div>
+
+<div class="device-adapter-flow" aria-label="Device JSON workflow">
+  <span>1 · Select device</span><b>→</b><span>2 · Select patient</span><b>→</b><span>3 · Enter measurements</span><b>→</b><span>4 · Generate JSON</span><b>→</b><span>5 · Process in adapter</span>
+</div>
+
+<div class="grid-12 device-generator-layout">
+<section class="panel span-7">
+  <div class="panel-head">
+    <div><div class="eyebrow">SIMULATED SOURCE</div><h2>Measurement generator</h2></div>
+    <span class="badge">No clinical interpretation added</span>
+  </div>
+
+  <form method="post" class="device-json-form" id="deviceJsonForm">
+    <div class="device-form-grid">
+      <label>
+        <span>Device</span>
+        <select name="device_type" id="deviceType" required>
+          {% for key,cfg in adapters.items() %}
+          <option value="{{key}}" {{'selected' if key==selected_adapter else ''}}>{{cfg.name}}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Patient</span>
+        <select name="patient_id" required>
+          <option value="">Select patient</option>
+          {% for p in patients %}
+          <option value="{{p.external_ref}}" {{'selected' if form_values.get('patient_id')==p.external_ref else ''}}>{{p.external_ref}} · {{p.first_name}} {{p.last_name}}</option>
+          {% endfor %}
+        </select>
+        <small>The stable patient reference is written into the JSON. Patient names are display-only.</small>
+      </label>
+      <label>
+        <span>Device identifier</span>
+        <input name="device_identifier" value="{{form_values.get('device_identifier','')}}" maxlength="160" required>
+      </label>
+      <label>
+        <span>Measurement timestamp</span>
+        <input name="measurement_timestamp" type="datetime-local" value="{{form_values.get('measurement_timestamp','')}}" required>
+        <small>CareAI normalises the timestamp before storage.</small>
+      </label>
+    </div>
+
+    <div class="device-measurement-panel" data-device-fields="generic_ble_glucometer" {% if selected_adapter!='generic_ble_glucometer' %}hidden{% endif %}>
+      <div class="panel-head mini"><div><div class="eyebrow">GLUCOSE</div><h3>Generic BLE glucometer measurements</h3></div></div>
+      <div class="device-form-grid">
+        <label><span>Glucose value</span><input name="glucose" type="number" step="0.1" min="1" max="720" value="{{form_values.get('glucose','')}}"></label>
+        <label><span>Unit</span><select name="glucose_unit"><option value="mmol/L" {{'selected' if form_values.get('glucose_unit','mmol/L')=='mmol/L' else ''}}>mmol/L</option><option value="mg/dL" {{'selected' if form_values.get('glucose_unit')=='mg/dL' else ''}}>mg/dL</option></select></label>
+        <label><span>Measurement context</span><select name="meal_context"><option value="unknown">Unknown</option><option value="fasting">Fasting</option><option value="before_meal">Before meal</option><option value="after_meal">After meal</option><option value="random" {{'selected' if form_values.get('meal_context')=='random' else ''}}>Random</option></select></label>
+      </div>
+    </div>
+
+    <div class="device-measurement-panel" data-device-fields="generic_ecg_patch" {% if selected_adapter!='generic_ecg_patch' %}hidden{% endif %}>
+      <div class="panel-head mini"><div><div class="eyebrow">SINGLE-LEAD ECG PATCH</div><h3>ECG recording + waveform simulator</h3></div><span class="badge">Simulated, non-diagnostic</span></div>
+      <p class="device-field-note">Generate a patient-bound single-lead ECG trace for adapter testing. The waveform and interval values are synthetic demo data and are not a clinical ECG interpretation.</p>
+      <div class="device-form-grid three">
+        <label><span>Heart rate</span><input name="ecg_heart_rate" type="number" step="1" min="20" max="250" value="{{form_values.get('ecg_heart_rate','')}}"><small>bpm</small></label>
+        <label><span>Lead</span><select name="ecg_lead"><option value="Lead I" {{'selected' if form_values.get('ecg_lead','Lead I')=='Lead I' else ''}}>Lead I</option><option value="Lead II" {{'selected' if form_values.get('ecg_lead')=='Lead II' else ''}}>Lead II</option><option value="Patch single lead" {{'selected' if form_values.get('ecg_lead')=='Patch single lead' else ''}}>Patch single lead</option></select><small>Generic patch lead label</small></label>
+        <label><span>Sampling rate</span><select name="ecg_sampling_rate"><option value="125" {{'selected' if form_values.get('ecg_sampling_rate')|string=='125' else ''}}>125 Hz</option><option value="250" {{'selected' if form_values.get('ecg_sampling_rate',250)|string=='250' else ''}}>250 Hz</option><option value="500" {{'selected' if form_values.get('ecg_sampling_rate')|string=='500' else ''}}>500 Hz</option></select><small>Samples per second</small></label>
+        <label><span>Recording duration</span><select name="ecg_duration"><option value="5" {{'selected' if form_values.get('ecg_duration')|string=='5' else ''}}>5 seconds</option><option value="10" {{'selected' if form_values.get('ecg_duration',10)|string=='10' else ''}}>10 seconds</option><option value="30" {{'selected' if form_values.get('ecg_duration')|string=='30' else ''}}>30 seconds</option></select><small>Waveform duration</small></label>
+        <label><span>RR interval</span><input name="rr_interval" type="number" step="1" min="150" max="4000" value="{{form_values.get('rr_interval','')}}"><small>ms</small></label>
+        <label><span>PR interval</span><input name="pr_interval" type="number" step="1" min="60" max="500" value="{{form_values.get('pr_interval','')}}"><small>ms</small></label>
+        <label><span>QRS duration</span><input name="qrs_duration" type="number" step="1" min="30" max="300" value="{{form_values.get('qrs_duration','')}}"><small>ms</small></label>
+        <label><span>QT interval</span><input name="qt_interval" type="number" step="1" min="150" max="800" value="{{form_values.get('qt_interval','')}}"><small>ms</small></label>
+        <label><span>QTc</span><input name="qtc" type="number" step="1" min="150" max="800" value="{{form_values.get('qtc','')}}"><small>ms</small></label>
+        <label><span>Rhythm label <em>optional</em></span><input name="rhythm" maxlength="160" value="{{form_values.get('rhythm','')}}" placeholder="Only if supplied by the device/source"><small>CareAI does not infer a diagnosis from the waveform.</small></label>
+      </div>
+      <div class="adapter-safety-note"><b>What is generated</b><span>A single-lead waveform in mV plus the entered ECG intervals. A future real patch/API can send the same recording structure and bypass the simulator.</span></div>
+    </div>
+
+    <div class="device-measurement-panel" data-device-fields="omron_connect" {% if selected_adapter!='omron_connect' %}hidden{% endif %}>
+      <div class="panel-head mini"><div><div class="eyebrow">BLOOD PRESSURE</div><h3>OMRON connect measurements</h3></div></div>
+      <div class="device-form-grid three">
+        <label><span>Systolic BP</span><input name="systolic_bp" type="number" step="1" min="50" max="300" value="{{form_values.get('systolic_bp','')}}"><small>mmHg</small></label>
+        <label><span>Diastolic BP</span><input name="diastolic_bp" type="number" step="1" min="30" max="200" value="{{form_values.get('diastolic_bp','')}}"><small>mmHg</small></label>
+        <label><span>Heart rate</span><input name="omron_heart_rate" type="number" step="1" min="20" max="250" value="{{form_values.get('omron_heart_rate','')}}"><small>bpm</small></label>
+      </div>
+    </div>
+
+    <div class="device-measurement-panel" data-device-fields="generic_ble_pulse_oximeter" {% if selected_adapter!='generic_ble_pulse_oximeter' %}hidden{% endif %}>
+      <div class="panel-head mini"><div><div class="eyebrow">OXYGEN SATURATION</div><h3>Generic BLE pulse oximeter measurements</h3></div></div>
+      <div class="device-form-grid">
+        <label><span>SpO₂</span><input name="pulse_spo2" type="number" step="0.1" min="50" max="100" value="{{form_values.get('pulse_spo2','')}}"><small>%</small></label>
+        <label><span>Pulse rate</span><input name="pulse_heart_rate" type="number" step="1" min="20" max="250" value="{{form_values.get('pulse_heart_rate','')}}"><small>bpm</small></label>
+      </div>
+      <small>Pulse rate is normalised to CareAI heart rate so existing monitoring and risk workflows can use it.</small>
+    </div>
+
+    <div class="device-measurement-panel" data-device-fields="withings" {% if selected_adapter!='withings' %}hidden{% endif %}>
+      <div class="panel-head mini"><div><div class="eyebrow">CONNECTED HEALTH</div><h3>Withings measurements</h3></div></div>
+      <p class="device-field-note">Enter the measurements supplied by the Withings device. Blood pressure values must be entered as a systolic/diastolic pair. At least one supported measurement is required.</p>
+      <div class="device-form-grid three">
+        <label><span>Systolic BP <em>optional</em></span><input name="withings_systolic_bp" type="number" step="1" min="50" max="300" value="{{form_values.get('withings_systolic_bp','')}}"><small>mmHg</small></label>
+        <label><span>Diastolic BP <em>optional</em></span><input name="withings_diastolic_bp" type="number" step="1" min="30" max="200" value="{{form_values.get('withings_diastolic_bp','')}}"><small>mmHg</small></label>
+        <label><span>Heart rate <em>optional</em></span><input name="withings_heart_rate" type="number" step="1" min="20" max="250" value="{{form_values.get('withings_heart_rate','')}}"><small>bpm</small></label>
+        <label><span>Weight <em>optional</em></span><input name="withings_weight" type="number" step="0.1" min="2" max="350" value="{{form_values.get('withings_weight','')}}"><small>kg</small></label>
+        <label><span>Body fat <em>optional</em></span><input name="withings_body_fat" type="number" step="0.1" min="1" max="75" value="{{form_values.get('withings_body_fat','')}}"><small>%</small></label>
+      </div>
+      <small>BP and heart rate feed existing CareAI monitoring/risk logic. Weight and body fat are stored in Patient 360 vital history without adding a new clinical risk model.</small>
+    </div>
+
+    <div class="device-form-actions">
+      <button type="button" class="outline-btn" id="generateSample">Generate sample values</button>
+      <button type="submit">Generate JSON</button>
+    </div>
+  </form>
+</section>
+
+<aside class="span-5">
+  <section class="panel device-json-preview-panel">
+    <div class="panel-head">
+      <div><div class="eyebrow">JSON PREVIEW</div><h2>{{'Generated payload' if preview_json else 'Waiting for generation'}}</h2></div>
+      {% if generated_record %}<span class="status-chip active">Generated</span>{% endif %}
+    </div>
+    {% if preview_json %}
+      <pre class="json-preview">{{preview_json}}</pre>
+      <div class="device-preview-actions">
+        <a class="outline-btn" href="{{url_for('device_adapter_record_download',record_id=generated_record.id)}}">Download JSON</a>
+        <a class="primary-link-btn" href="{{url_for('device_adapter',adapter_key=selected_adapter,record_id=generated_record.id)}}">Open adapter →</a>
+      </div>
+    {% else %}
+      <div class="device-empty-state"><b>No JSON generated yet</b><span>Select a device and patient, enter measurements, then generate the payload.</span></div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><div class="eyebrow">ADAPTER CONTRACT</div><h2>{{adapter.name}}</h2></div></div>
+    <p>{{adapter.summary}}</p>
+    <details class="schema-details"><summary>View expected JSON example</summary><pre class="json-preview compact">{{example_json}}</pre></details>
+  </section>
+</aside>
+</div>
+
+<script>
+(function(){
+  const device = document.getElementById('deviceType');
+  const form = document.getElementById('deviceJsonForm');
+  function toggleFields(){
+    const selected = device.value;
+    document.querySelectorAll('[data-device-fields]').forEach(section => {
+      const active = section.dataset.deviceFields === selected;
+      section.hidden = !active;
+      section.querySelectorAll('input,select').forEach(el => {
+        if (el.name === 'device_type') return;
+        el.disabled = !active;
+      });
+    });
+    const defaults = {{default_device_ids|tojson}};
+    const idInput = form.querySelector('[name="device_identifier"]');
+    if (defaults[selected]) idInput.value = defaults[selected];
+  }
+  device.addEventListener('change', function(){
+    const url = new URL(window.location.href);
+    url.searchParams.set('device_type', device.value);
+    window.location.href = url.toString();
+  });
+
+  document.getElementById('generateSample').addEventListener('click', function(){
+    const key = device.value;
+    if (key === 'generic_ble_glucometer') {
+      form.querySelector('[name="glucose"]').value = (4.5 + Math.random()*4.0).toFixed(1);
+      form.querySelector('[name="glucose_unit"]').value = 'mmol/L';
+      form.querySelector('[name="meal_context"]').value = 'random';
+    } else if (key === 'generic_ecg_patch') {
+      const hr = Math.floor(60 + Math.random()*30);
+      const rr = Math.round(60000 / hr);
+      const qtc = Math.floor(395 + Math.random()*35);
+      const qt = Math.round(qtc * Math.sqrt(rr / 1000));
+      form.querySelector('[name="ecg_heart_rate"]').value = hr;
+      form.querySelector('[name="ecg_lead"]').value = 'Lead I';
+      form.querySelector('[name="ecg_sampling_rate"]').value = '250';
+      form.querySelector('[name="ecg_duration"]').value = '10';
+      form.querySelector('[name="rr_interval"]').value = rr;
+      form.querySelector('[name="pr_interval"]').value = Math.floor(145 + Math.random()*40);
+      form.querySelector('[name="qrs_duration"]').value = Math.floor(82 + Math.random()*22);
+      form.querySelector('[name="qt_interval"]').value = qt;
+      form.querySelector('[name="qtc"]').value = qtc;
+      form.querySelector('[name="rhythm"]').value = '';
+    } else if (key === 'omron_connect') {
+      form.querySelector('[name="systolic_bp"]').value = Math.floor(118 + Math.random()*28);
+      form.querySelector('[name="diastolic_bp"]').value = Math.floor(70 + Math.random()*18);
+      form.querySelector('[name="omron_heart_rate"]').value = Math.floor(60 + Math.random()*26);
+    } else if (key === 'generic_ble_pulse_oximeter') {
+      form.querySelector('[name="pulse_spo2"]').value = (94 + Math.random()*5).toFixed(1);
+      form.querySelector('[name="pulse_heart_rate"]').value = Math.floor(60 + Math.random()*30);
+    } else if (key === 'withings') {
+      const sys = Math.floor(116 + Math.random()*28);
+      form.querySelector('[name="withings_systolic_bp"]').value = sys;
+      form.querySelector('[name="withings_diastolic_bp"]').value = Math.floor(70 + Math.random()*18);
+      form.querySelector('[name="withings_heart_rate"]').value = Math.floor(60 + Math.random()*26);
+      form.querySelector('[name="withings_weight"]').value = (60 + Math.random()*28).toFixed(1);
+      form.querySelector('[name="withings_body_fat"]').value = (17 + Math.random()*15).toFixed(1);
+    }
+  });
+  toggleFields();
+})();
+</script>
+{% endblock %}

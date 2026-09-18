@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="top-hero compact device-adapter-hero">
+  <div>
+    <a class="back" href="{{url_for('integrations')}}">← Integrations</a>
+    <div class="eyebrow">DEVICE ADAPTER</div>
+    <h1>{{adapter.name}}</h1>
+    <p>{{adapter.summary}}</p>
+  </div>
+  <a class="outline-btn" href="{{url_for('device_json_generator',device_type=adapter.key)}}">+ Generate test JSON</a>
+</div>
+
+<div class="device-adapter-flow">
+  <span>JSON / vendor source</span><b>→</b><span>{{adapter.short_name}} adapter</span><b>→</b><span>Validated + normalised</span><b>→</b><span>CareAI vitals / device events</span>
+</div>
+
+<div class="grid-12 device-adapter-layout">
+<section class="panel span-5">
+  <div class="panel-head"><div><div class="eyebrow">UPLOAD & VALIDATE</div><h2>Device-specific JSON</h2></div><span class="badge">Max 1 MB</span></div>
+  <form class="device-upload-form" method="post" enctype="multipart/form-data">
+    <label class="device-upload-drop">
+      <span>Choose a {{adapter.name}} JSON file</span>
+      <input type="file" name="json_file" accept="application/json,.json" required>
+      <small>Files for another adapter are rejected before any patient measurement is stored.</small>
+    </label>
+    <button type="submit">Upload & validate JSON</button>
+  </form>
+
+  <div class="adapter-safety-note">
+    <b>Patient-safe matching</b>
+    <span>The adapter resolves <code>patient_id</code> against the existing CareAI patient master and never assigns measurements by patient name.</span>
+  </div>
+
+  <details class="schema-details">
+    <summary>View JSON schema contract</summary>
+    <pre class="json-preview compact">{{schema_json}}</pre>
+  </details>
+</section>
+
+<section class="panel span-7">
+  <div class="panel-head">
+    <div><div class="eyebrow">VALIDATION PREVIEW</div><h2>{% if preview %}Record #{{preview.record.id}}{% else %}Select a history record{% endif %}</h2></div>
+    {% if preview %}<span class="status-chip {{'active' if preview.record.processing_status=='processed' else ('archived' if preview.record.processing_status=='failed' else '')}}">{{preview.record.processing_status|title}}</span>{% endif %}
+  </div>
+
+  {% if preview %}
+    {% if preview.record.error_message %}<div class="adapter-error-box">{{preview.record.error_message}}</div>{% endif %}
+    {% if preview.normalised %}
+    <div class="adapter-preview-summary">
+      <div><small>Patient</small><b>{{preview.normalised.patient_ref}}</b><span>{{preview.normalised.patient_name}}</span></div>
+      <div><small>Device</small><b>{{preview.normalised.device_identifier}}</b><span>{{adapter.short_name}}</span></div>
+      <div><small>Measured</small><b>{{preview.normalised.measured_at}}</b><span>{{preview.record.source_mode|replace('_',' ')|title}}</span></div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Normalised signal</th><th>Value</th><th>Unit</th><th>CareAI destination</th></tr></thead>
+        <tbody>
+          {% for m in preview.normalised.measurements %}
+          <tr>
+            <td>{{m.metric|replace('_',' ')|title}}</td>
+            <td>{{m.text_value if m.storage=='device_event' else m.value}}</td>
+            <td>{{m.unit}}</td>
+            <td>{% if m.storage=='vital' %}Vitals{% elif m.storage=='ecg_metric' %}ECG recording{% else %}Device events{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if adapter.key=='generic_ecg_patch' and preview.normalised.ecg_recording %}
+    {% set ecg=preview.normalised.ecg_recording %}
+    <section class="ecg-preview-card">
+      <div class="panel-head mini">
+        <div><div class="eyebrow">ECG WAVEFORM PREVIEW</div><h3>{{ecg.lead}} · {{ecg.duration_seconds}} s</h3></div>
+        <span class="badge">{{ecg.sampling_rate_hz}} Hz · {{ecg.amplitude_unit}}</span>
+      </div>
+      <div class="ecg-metric-grid">
+        <div><small>Heart rate</small><b>{{ecg.heart_rate_bpm|round|int}} bpm</b></div>
+        <div><small>RR</small><b>{{ecg.rr_interval_ms|round|int if ecg.rr_interval_ms is not none else '—'}} ms</b></div>
+        <div><small>PR</small><b>{{ecg.pr_interval_ms|round|int if ecg.pr_interval_ms is not none else '—'}} ms</b></div>
+        <div><small>QRS</small><b>{{ecg.qrs_duration_ms|round|int if ecg.qrs_duration_ms is not none else '—'}} ms</b></div>
+        <div><small>QT</small><b>{{ecg.qt_interval_ms|round|int if ecg.qt_interval_ms is not none else '—'}} ms</b></div>
+        <div><small>QTc</small><b>{{ecg.qtc_ms|round|int if ecg.qtc_ms is not none else '—'}} ms</b></div>
+      </div>
+      {% if ecg.rhythm_label %}<div class="ecg-source-label"><b>Source rhythm label:</b> {{ecg.rhythm_label}}</div>{% endif %}
+      <div class="ecg-waveform-wrap"><canvas id="adapterEcgChart" height="150"></canvas></div>
+      <p class="ecg-disclaimer">Simulated/source waveform display only. CareAI does not infer an ECG diagnosis from this trace.</p>
+    </section>
+    {% endif %}
+    {% endif %}
+
+    {% if preview.payload_pretty %}<details class="schema-details" open><summary>View JSON</summary><pre class="json-preview">{{preview.payload_pretty}}</pre></details>{% endif %}
+
+    <div class="device-preview-actions">
+      {% if preview.payload_pretty %}<a class="outline-btn" href="{{url_for('device_adapter_record_download',record_id=preview.record.id)}}">Download JSON</a>{% endif %}
+      {% if preview.record.processing_status=='generated' and preview.record.validation_status=='valid' %}
+      <form method="post" action="{{url_for('device_adapter_process',adapter_key=adapter.key,record_id=preview.record.id)}}"><button type="submit">Process & save to patient</button></form>
+      {% elif preview.record.processing_status=='processed' and preview.record.patient_id %}
+      <a class="primary-link-btn" href="{{url_for('patient',patient_id=preview.record.patient_id,tab='vitals')}}">Open Patient 360 Vitals →</a>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="device-empty-state"><b>No record selected</b><span>Upload a compatible JSON file or open one from the device history below.</span></div>
+  {% endif %}
+</section>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><div><div class="eyebrow">DEVICE-SPECIFIC HISTORY</div><h2>{{adapter.name}} JSON records</h2></div><span>{{records|length}} recent record{{'' if records|length==1 else 's'}}</span></div>
+  <div class="table-wrap">
+    <table class="data-table device-history-table">
+      <thead><tr><th>Reference</th><th>Patient</th><th>Generated / uploaded</th><th>Device</th><th>Source</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for r in records %}
+        <tr>
+          <td><b>#{{r.id}}</b><small>{{r.original_filename or r.source_identifier or 'JSON record'}}</small></td>
+          <td>{% if r.external_ref %}<b>{{r.external_ref}}</b><small>{{r.first_name}} {{r.last_name}}</small>{% else %}<span>Not resolved</span>{% endif %}</td>
+          <td>{{r.generated_at or r.created_at}}</td>
+          <td>{{r.device_identifier or '—'}}</td>
+          <td>{{r.source_mode|replace('_',' ')|title}}</td>
+          <td><span class="adapter-status {{r.processing_status}}">{{r.processing_status|title}}</span>{% if r.error_message %}<small>{{r.error_message}}</small>{% endif %}</td>
+          <td class="adapter-history-actions"><a href="{{url_for('device_adapter',adapter_key=adapter.key,record_id=r.id)}}">View JSON</a>{% if r.processing_status=='generated' and r.validation_status=='valid' %}<form method="post" action="{{url_for('device_adapter_process',adapter_key=adapter.key,record_id=r.id)}}"><button class="link-button" type="submit">Process</button></form>{% endif %}</td>
+        </tr>
+      {% else %}<tr><td colspan="7">No {{adapter.name}} JSON records yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel adapter-future-panel">
+  <div><div class="eyebrow">FUTURE DEVICE PATH</div><h2>Same downstream processing, different ingestion source</h2></div>
+  <div class="adapter-paths">
+    <div><b>Today</b><span>JSON Simulator / Upload</span><i>→</i><span>{{adapter.short_name}} adapter</span><i>→</i><span>Normalised CareAI measurement</span></div>
+    <div><b>Later</b><span>BLE gateway / Vendor API</span><i>→</i><span>{{adapter.short_name}} adapter</span><i>→</i><span>Same CareAI measurement pipeline</span></div>
+  </div>
+</section>
+
+{% if preview and preview.normalised and preview.normalised.ecg_recording %}
+<script>
+(function () {
+  const canvas = document.getElementById('adapterEcgChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const ecg = {{preview.normalised.ecg_recording|tojson}};
+  const rate = Number(ecg.sampling_rate_hz || 250);
+  const points = (ecg.samples || []).map((y, i) => ({x: i / rate, y: Number(y)}));
+  new Chart(canvas, {
+    type: 'line',
+    data: {datasets: [{label: ecg.lead || 'ECG', data: points, borderWidth: 1.5, pointRadius: 0, tension: 0}]},
+    options: {
+      animation: false,
+      parsing: false,
+      normalized: true,
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {mode: 'nearest', intersect: false},
+      plugins: {legend: {display: false}, tooltip: {callbacks: {title: items => items.length ? items[0].parsed.x.toFixed(3) + ' s' : ''}}},
+      scales: {
+        x: {type: 'linear', title: {display: true, text: 'Seconds'}, grid: {color: 'rgba(220,80,80,.10)'}},
+        y: {title: {display: true, text: ecg.amplitude_unit || 'mV'}, grid: {color: 'rgba(220,80,80,.14)'}}
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

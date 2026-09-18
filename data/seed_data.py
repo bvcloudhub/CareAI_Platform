@@ -25,6 +25,11 @@ def seed_database(conn):
     random.seed(24)
     for idx,rec in enumerate(PATIENTS,1):
         ext,fn,ln,dob,sex,city,setting,gp,conditions,meds=rec
+        # Idempotent demo seeding: an existing patient reference is never overwritten,
+        # renumbered or given duplicate child records. UI-created patients are untouched.
+        existing=conn.execute("SELECT id FROM patients WHERE external_ref=?",(ext,)).fetchone()
+        if existing:
+            continue
         status="stable"
         cur=conn.execute("""INSERT INTO patients(
             external_ref,first_name,last_name,birth_date,sex,city,living_setting,gp_name,

@@ -37,10 +37,20 @@ def _context(run_id):
 
 def _family_eligibility(patient_id):
     family = query_db(
-        """SELECT * FROM family_users
-           WHERE patient_id=? AND active=1 ORDER BY id LIMIT 1""",
+        """SELECT id,patient_id,display_name,relationship,email,
+                  'summary,alerts,messages,teleconsult' access_scope,
+                  notification_consent consent_granted,consent_reference,expires_at,active
+           FROM patient_contacts
+           WHERE patient_id=? AND active=1 AND authorised_for_updates=1
+           ORDER BY notification_consent DESC,id LIMIT 1""",
         (patient_id,), one=True,
     )
+    if not family:
+        family = query_db(
+            """SELECT * FROM family_users
+               WHERE patient_id=? AND active=1 ORDER BY id LIMIT 1""",
+            (patient_id,), one=True,
+        )
     if not family:
         return {"eligible": False, "reason": "No authorised family contact available", "contact": None}
     if not family["consent_granted"]:

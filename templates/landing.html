@@ -78,7 +78,7 @@
     <div id="landingPatientRows">
       {% for p in landing_patients %}
       <a class="ref-patient-row" href="{{url_for('patient',patient_id=p.id) if current_user.is_authenticated else url_for('login')}}" aria-label="Open {{p.first_name}} {{p.last_name}} Patient 360">
-        <div class="mini-avatar">{{p.first_name[0]}}{{p.last_name[0]}}</div>
+        {% if p.profile_photo_path %}<img class="mini-avatar patient-photo-sm" src="{{url_for('static',filename=p.profile_photo_path)}}" alt="{{p.first_name}} {{p.last_name}}">{% else %}<div class="mini-avatar">{{p.first_name[0]}}{{p.last_name[0]}}</div>{% endif %}
         <div class="ref-patient-main"><small>{{p.external_ref}}</small><b>{{p.first_name}} {{p.last_name}}</b><span>{{p.city}}</span></div>
         <span class="landing-risk-label {{p.priority}}">{{p.priority_label}}</span>
         <span class="ref-row-open" aria-hidden="true">›</span>

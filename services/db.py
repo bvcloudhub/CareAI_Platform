@@ -54,6 +54,16 @@ def init_db(force_seed=False):
       preferred_language TEXT DEFAULT 'nl',
       living_setting TEXT,
       gp_name TEXT,
+      phone TEXT,
+      email TEXT,
+      address_line1 TEXT,
+      postal_code TEXT,
+      profile_photo_path TEXT,
+      mobility_status TEXT,
+      allergies TEXT,
+      clinical_notes TEXT,
+      assigned_nurse_id INTEGER REFERENCES users(id),
+      assigned_clinician_id INTEGER REFERENCES users(id),
       emergency_contact_name TEXT,
       emergency_contact_relation TEXT,
       consent_monitoring INTEGER DEFAULT 1,
@@ -64,8 +74,32 @@ def init_db(force_seed=False):
       retention_until TEXT,
       dpa_reference TEXT DEFAULT 'DEMO-DPA',
       active INTEGER DEFAULT 1,
-      current_status TEXT DEFAULT 'stable'
+      current_status TEXT DEFAULT 'stable',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_by INTEGER REFERENCES users(id),
+      archived_at TEXT,
+      archived_by INTEGER REFERENCES users(id)
     );
+
+    CREATE INDEX IF NOT EXISTS idx_patients_active_name ON patients(active,last_name,first_name);
+
+    CREATE TABLE IF NOT EXISTS patient_contacts(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+      display_name TEXT NOT NULL,
+      relationship TEXT,
+      phone TEXT,
+      email TEXT,
+      authorised_for_updates INTEGER NOT NULL DEFAULT 0,
+      notification_consent INTEGER NOT NULL DEFAULT 0,
+      consent_reference TEXT,
+      expires_at TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_patient_contacts_patient_active ON patient_contacts(patient_id,active);
 
     CREATE TABLE IF NOT EXISTS conditions(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -407,7 +441,7 @@ def init_db(force_seed=False):
       device_id TEXT,
       device_name TEXT,
       account_label TEXT,
-     status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('pending','active','revoked')),
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('pending','active','revoked')),
       connected_at TEXT DEFAULT CURRENT_TIMESTAMP,
       last_seen_at TEXT,
       last_synced_at TEXT,
@@ -458,7 +492,129 @@ def init_db(force_seed=False):
       status TEXT DEFAULT 'available_option',
       notes TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS device_adapter_records(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      adapter_key TEXT NOT NULL,
+      patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+      source_mode TEXT NOT NULL DEFAULT 'upload',
+      source_identifier TEXT,
+      device_identifier TEXT,
+      original_filename TEXT,
+      payload_json TEXT,
+      payload_hash TEXT NOT NULL,
+      validation_status TEXT NOT NULL DEFAULT 'valid' CHECK(validation_status IN ('valid','invalid')),
+      processing_status TEXT NOT NULL DEFAULT 'generated' CHECK(processing_status IN ('generated','processed','failed')),
+      error_message TEXT,
+      generated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      generated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      processed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      processed_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_device_adapter_payload_hash
+      ON device_adapter_records(adapter_key,payload_hash);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_device_adapter_source_record
+      ON device_adapter_records(adapter_key,patient_id,source_identifier)
+      WHERE patient_id IS NOT NULL AND source_identifier IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_device_adapter_history
+      ON device_adapter_records(adapter_key,id DESC);
+    CREATE INDEX IF NOT EXISTS idx_device_adapter_patient
+      ON device_adapter_records(patient_id,adapter_key,id DESC);
+
+    CREATE TABLE IF NOT EXISTS device_adapter_measurements(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      record_id INTEGER NOT NULL REFERENCES device_adapter_records(id) ON DELETE CASCADE,
+      patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+      adapter_key TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      value_real REAL,
+      value_text TEXT,
+      unit TEXT,
+      measured_at TEXT NOT NULL,
+      vital_id INTEGER REFERENCES vitals(id) ON DELETE SET NULL,
+      device_event_id INTEGER REFERENCES device_events(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(record_id,metric)
+    );
+    CREATE INDEX IF NOT EXISTS idx_device_adapter_measurement_patient
+      ON device_adapter_measurements(patient_id,metric,measured_at DESC);
+
+    CREATE TABLE IF NOT EXISTS ecg_recordings(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+      device_adapter_record_id INTEGER UNIQUE REFERENCES device_adapter_records(id) ON DELETE SET NULL,
+      device_identifier TEXT NOT NULL,
+      lead_name TEXT NOT NULL DEFAULT 'Lead I',
+      sampling_rate_hz INTEGER NOT NULL,
+      duration_seconds REAL NOT NULL,
+      amplitude_unit TEXT NOT NULL DEFAULT 'mV',
+      waveform_json TEXT NOT NULL,
+      heart_rate_bpm REAL,
+      rr_interval_ms REAL,
+      pr_interval_ms REAL,
+      qrs_duration_ms REAL,
+      qt_interval_ms REAL,
+      qtc_ms REAL,
+      rhythm_label TEXT,
+      measured_at TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'device_adapter:generic_ecg_patch',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_ecg_recordings_patient_time
+      ON ecg_recordings(patient_id,measured_at DESC);
     """)
+    conn.commit()
+
+    # Safe additive Patient Management upgrade for databases created by earlier
+    # versions. SQLite cannot add multiple columns in one statement, so each
+    # missing column is detected before ALTER TABLE is used. No existing values
+    # or primary keys are rewritten.
+    patient_columns = {r["name"] for r in conn.execute("PRAGMA table_info(patients)").fetchall()}
+    patient_management_columns = {
+        "phone": "TEXT",
+        "email": "TEXT",
+        "address_line1": "TEXT",
+        "postal_code": "TEXT",
+        "profile_photo_path": "TEXT",
+        "mobility_status": "TEXT",
+        "allergies": "TEXT",
+        "clinical_notes": "TEXT",
+        "assigned_nurse_id": "INTEGER",
+        "assigned_clinician_id": "INTEGER",
+        "created_at": "TEXT",
+        "updated_at": "TEXT",
+        "updated_by": "INTEGER",
+        "archived_at": "TEXT",
+        "archived_by": "INTEGER",
+    }
+    for column, ddl in patient_management_columns.items():
+        if column not in patient_columns:
+            conn.execute(f"ALTER TABLE patients ADD COLUMN {column} {ddl}")
+    conn.executescript("""
+      CREATE TABLE IF NOT EXISTS patient_contacts(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+        display_name TEXT NOT NULL,
+        relationship TEXT,
+        phone TEXT,
+        email TEXT,
+        authorised_for_updates INTEGER NOT NULL DEFAULT 0,
+        notification_consent INTEGER NOT NULL DEFAULT 0,
+        consent_reference TEXT,
+        expires_at TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_patient_contacts_patient_active ON patient_contacts(patient_id,active);
+      CREATE INDEX IF NOT EXISTS idx_patients_active_name ON patients(active,last_name,first_name);
+      CREATE INDEX IF NOT EXISTS idx_patients_assigned_nurse ON patients(assigned_nurse_id,active);
+    """)
+    from datetime import datetime as _dt
+    _patient_schema_now = _dt.now().isoformat(timespec="seconds")
+    conn.execute("UPDATE patients SET created_at=COALESCE(created_at,?), updated_at=COALESCE(updated_at,?)",
+                 (_patient_schema_now, _patient_schema_now))
     conn.commit()
 
     # Backfill the new metrics shell for Agentic Care runs created by the earlier

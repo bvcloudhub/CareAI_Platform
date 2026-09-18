@@ -64,7 +64,7 @@
   <div class="patient-list">
   {% for p in patients %}
     <a href="{{url_for('patient',patient_id=p.id)}}" class="patient-row {{'agentic-priority-row' if p.agentic_case and p.agentic_case.status!='rejected' else ''}}">
-      <div class="avatar">{{p.first_name[0]}}{{p.last_name[0]}}</div>
+      {% if p.profile_photo_path %}<img class="avatar patient-photo-sm" src="{{url_for('static',filename=p.profile_photo_path)}}" alt="{{p.first_name}} {{p.last_name}}">{% else %}<div class="avatar">{{p.first_name[0]}}{{p.last_name[0]}}</div>{% endif %}
       <div class="patient-id"><b>{{p.first_name}} {{p.last_name}}</b><small>{{p.city}} · {{p.living_setting}}</small>{% if p.agentic_case and p.agentic_case.status!='rejected' %}<small class="agentic-row-label">✦ {{p.agentic_case.alert_type}} · {{p.agentic_case.status|replace('_',' ')}}</small>{% endif %}</div>
       <div class="metric"><small>SpO₂</small><b>{{"%.1f"|format(p.spo2 or 0)}}%</b></div>
       <div class="metric"><small>HR</small><b>{{"%.0f"|format(p.heart_rate or 0)}}</b></div>

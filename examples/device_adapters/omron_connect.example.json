@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "record_id": "example-omron-001",
+  "patient_id": "NL-CR-001",
+  "device_type": "omron_connect",
+  "device_identifier": "OMRON-SIM-001",
+  "source": {"type": "simulated", "name": "CareAI Device JSON Generator"},
+  "measurement_timestamp": "2026-09-15T12:10:00Z",
+  "measurements": {
+    "systolic_bp": {"value": 132, "unit": "mmHg"},
+    "diastolic_bp": {"value": 82, "unit": "mmHg"},
+    "heart_rate": {"value": 72, "unit": "bpm"}
+  }
+}

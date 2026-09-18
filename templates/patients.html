@@ -1,46 +1,184 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-head">
+<div class="page-head patient-management-head">
   <div>
-    <div class="eyebrow">{{t("patients")|upper}}</div>
-    <h1>{{t("patient_overview")}}</h1>
-    <p>{{t("one_platform")}}</p>
+    <div class="eyebrow">PATIENT MANAGEMENT</div>
+    <h1>Patients</h1>
+    <p>Database-backed patient master records used across CareAI.</p>
   </div>
+  {% if current_user.role in ['admin','nurse'] %}
+  <a class="primary-action" href="{{url_for('patient_new')}}">＋ Add New Patient</a>
+  {% endif %}
 </div>
 
-<section class="panel">
-  <nav class="filter-pills patient-page-filters" aria-label="Filter patients">
-    <a class="{{'active' if patient_filter=='all' else ''}}" href="{{url_for('patients_page',filter='all')}}">All</a>
-    <a class="{{'active' if patient_filter=='high_critical' else ''}}" href="{{url_for('patients_page',filter='high_critical')}}">High / Critical</a>
-    <a class="{{'active' if patient_filter=='medium' else ''}}" href="{{url_for('patients_page',filter='medium')}}">Medium</a>
-    <a class="{{'active' if patient_filter=='low' else ''}}" href="{{url_for('patients_page',filter='low')}}">Low</a>
-    <a class="{{'active' if patient_filter=='copd' else ''}}" href="{{url_for('patients_page',filter='copd')}}">COPD</a>
-    <a class="{{'active' if patient_filter=='fall_risk' else ''}}" href="{{url_for('patients_page',filter='fall_risk')}}">Fall risk</a>
-    <a class="{{'active' if patient_filter=='medication' else ''}}" href="{{url_for('patients_page',filter='medication')}}">Medication</a>
-  </nav>
+<section class="patient-management-kpis" aria-label="Patient summary">
+  <article><small>Total patients</small><strong>{{summary.total}}</strong><span>All retained records</span></article>
+  <article><small>Active patients</small><strong>{{summary.active}}</strong><span>Available in active workflows</span></article>
+  <article><small>High / Critical</small><strong>{{summary.high_critical}}</strong><span>Current database-derived priority</span></article>
+  <article><small>Archived</small><strong>{{summary.archived}}</strong><span>History retained, workflows excluded</span></article>
+</section>
 
-  <div class="patient-list" id="patientOverviewList">
-    {% for p in patients %}
-    <a href="{{url_for('patient',patient_id=p.id)}}" class="patient-row patient-row-link" aria-label="Open {{p.first_name}} {{p.last_name}} Patient 360">
-      <div class="avatar">{{p.first_name[0]}}{{p.last_name[0]}}</div>
-      <div class="patient-id">
-        <b>{{p.first_name}} {{p.last_name}}</b>
-        <small>{{p.external_ref}} · {{p.city}}</small>
-      </div>
-      <div>{{p.living_setting}}</div>
-      <div>
-        <span class="risk {{p.priority}}">{{p.priority|upper}} · {{p.risk_score or 0}}</span>
-      </div>
-      <div class="patient-tags-inline">
-        {% if p.has_copd %}<span>COPD</span>{% endif %}
-        {% if p.has_fall_risk %}<span>Fall risk</span>{% endif %}
-        {% if p.has_medication_risk %}<span>Medication</span>{% endif %}
-      </div>
-      <div class="arrow" aria-hidden="true">›</div>
-    </a>
-    {% else %}
-    <div class="empty light">No patients match the selected filter.</div>
-    {% endfor %}
+<section class="panel patient-management-panel">
+  <form class="patient-search-form" method="get" action="{{url_for('patients_page')}}">
+    <label>
+      <span>Search</span>
+      <input type="search" name="q" value="{{filters.q}}" placeholder="Patient ID, name, city or clinician">
+    </label>
+    <label>
+      <span>Status</span>
+      <select name="status">
+        <option value="active" {{'selected' if filters.status=='active'}}>Active</option>
+        <option value="archived" {{'selected' if filters.status=='archived'}}>Archived</option>
+        <option value="all" {{'selected' if filters.status=='all'}}>All</option>
+      </select>
+    </label>
+    <label>
+      <span>Priority</span>
+      <select name="risk">
+        <option value="all" {{'selected' if filters.risk=='all'}}>All priorities</option>
+        <option value="high_critical" {{'selected' if filters.risk=='high_critical'}}>High / Critical</option>
+        <option value="medium" {{'selected' if filters.risk=='medium'}}>Medium</option>
+        <option value="low" {{'selected' if filters.risk=='low'}}>Low</option>
+      </select>
+    </label>
+    <label>
+      <span>Condition</span>
+      <input type="search" name="condition" value="{{filters.condition}}" placeholder="e.g. COPD, diabetes">
+    </label>
+    <label>
+      <span>Assigned nurse</span>
+      <select name="nurse_id">
+        <option value="">All nurses</option>
+        {% for nurse in options.nurses %}
+        <option value="{{nurse.id}}" {{'selected' if filters.nurse_id==nurse.id}}>{{nurse.display_name}}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="patient-search-actions">
+      <a class="outline-btn" href="{{url_for('patients_page')}}">Reset</a>
+    </div>
+  </form>
+
+  <div class="patient-management-count">{{patients|length}} patient{{'' if patients|length==1 else 's'}} shown</div>
+
+  <div class="table-wrap patient-management-table-wrap">
+    <table class="data-table patient-management-table">
+      <thead>
+        <tr>
+          <th>Patient</th><th>ID</th><th>Age / DOB</th><th>Location</th><th>Clinical context</th>
+          <th>Priority</th><th>Assigned nurse</th><th>Status</th><th>Updated</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for p in patients %}
+        <tr>
+          <td>
+            <div class="patient-cell">
+              {% if p.profile_photo_path %}
+              <img class="patient-photo-sm" src="{{url_for('static',filename=p.profile_photo_path)}}" alt="{{p.first_name}} {{p.last_name}}">
+              {% else %}
+              <span class="avatar patient-avatar-sm">{{p.first_name[0]}}{{p.last_name[0]}}</span>
+              {% endif %}
+              <div><b>{{p.first_name}} {{p.last_name}}</b><small>{{p.email or p.phone or 'No contact details'}}</small></div>
+            </div>
+          </td>
+          <td><b>{{p.external_ref}}</b></td>
+          <td>{{p.age if p.age is not none else '—'}}<small>{{p.birth_date}}</small></td>
+          <td>{{p.city or '—'}}<small>{{p.living_setting or 'Not set'}}</small></td>
+          <td class="clinical-summary">{{p.condition_summary or 'No active conditions recorded'}}</td>
+          <td><span class="risk {{p.priority}}">{{p.priority|upper}} · {{p.risk_score}}</span></td>
+          <td>{{p.assigned_nurse_name or 'Unassigned'}}</td>
+          <td><span class="status-chip {{'active' if p.active else 'archived'}}">{{'Active' if p.active else 'Archived'}}</span></td>
+          <td>{{p.updated_at or p.created_at or '—'}}</td>
+          <td>
+            <div class="patient-row-actions">
+              <a href="{{url_for('patient',patient_id=p.id)}}">View</a>
+              <a href="{{url_for('patient',patient_id=p.id)}}">Patient 360</a>
+              {% if current_user.role in ['admin','nurse'] %}<a href="{{url_for('patient_edit',patient_id=p.id)}}">Edit</a>{% endif %}
+              {% if current_user.role=='admin' %}
+                {% if p.active %}
+                <form method="post" action="{{url_for('patient_archive',patient_id=p.id)}}" onsubmit="return confirm('Archive {{p.first_name}} {{p.last_name}}? Clinical history will be retained.');"><button class="link-button danger" type="submit">Archive</button></form>
+                {% else %}
+                <form method="post" action="{{url_for('patient_reactivate',patient_id=p.id)}}"><button class="link-button" type="submit">Reactivate</button></form>
+                {% endif %}
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="10"><div class="empty light">No patients match the selected search and filters.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
 </section>
+
+<script>
+(function () {
+  const form = document.querySelector('.patient-search-form');
+  if (!form) return;
+
+  const resultCount = document.querySelector('.patient-management-count');
+  const tableBody = document.querySelector('.patient-management-table tbody');
+  let debounceTimer = null;
+  let activeRequest = null;
+
+  function buildUrl() {
+    const params = new URLSearchParams(new FormData(form));
+    return form.action + '?' + params.toString();
+  }
+
+  async function refreshPatients() {
+    const url = buildUrl();
+    if (activeRequest) activeRequest.abort();
+    activeRequest = new AbortController();
+    form.setAttribute('aria-busy', 'true');
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
+        signal: activeRequest.signal
+      });
+      if (!response.ok) throw new Error('Patient search failed');
+
+      const html = await response.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const nextCount = doc.querySelector('.patient-management-count');
+      const nextBody = doc.querySelector('.patient-management-table tbody');
+      if (!nextCount || !nextBody) throw new Error('Patient search response was incomplete');
+
+      resultCount.innerHTML = nextCount.innerHTML;
+      tableBody.innerHTML = nextBody.innerHTML;
+      window.history.replaceState({}, '', url);
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        window.location.assign(url);
+      }
+    } finally {
+      form.removeAttribute('aria-busy');
+    }
+  }
+
+  function scheduleRefresh() {
+    window.clearTimeout(debounceTimer);
+    debounceTimer = window.setTimeout(refreshPatients, 300);
+  }
+
+  form.querySelectorAll('input[type="search"]').forEach(function (input) {
+    input.addEventListener('input', scheduleRefresh);
+    input.addEventListener('search', scheduleRefresh);
+  });
+
+  form.querySelectorAll('select').forEach(function (select) {
+    select.addEventListener('change', refreshPatients);
+  });
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    window.clearTimeout(debounceTimer);
+    refreshPatients();
+  });
+})();
+</script>
 {% endblock %}
