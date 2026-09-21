@@ -27,23 +27,24 @@
   <article class="command-agentic-case {{c.status}}">
     <div class="agentic-case-title">
       <span class="alert-dot {{c.severity if c.severity in ('critical','high','medium','low') else 'medium'}}"></span>
-      <div><small>{{(c.severity|upper ~ ' AGENTIC EVENT') if c.status!='rejected' else 'HUMAN-STOPPED AGENTIC EVENT'}}</small><h3>{{c.first_name}} {{c.last_name}} · {{c.alert_type}} · {{c.confidence}}% sensor confidence</h3></div>
+      <div><small>{{(c.severity|upper ~ (' HOSPITAL AI' if c.module_key=='hospital' else ' AGENTIC EVENT')) if c.status!='rejected' else 'HUMAN-STOPPED WORKFLOW'}}</small><h3>{{c.first_name}} {{c.last_name}} · {{c.alert_type}} · {% if c.module_key=='hospital' %}hybrid {{c.triage_score}}/100{% else %}{{c.confidence}}% sensor confidence{% endif %}</h3></div>
       <span class="case-status">{{c.status|replace('_',' ')|upper}}</span>
     </div>
     <div class="agentic-case-facts">
       <div><small>RISK</small><b>{{c.severity|upper}}</b></div>
       <div><small>LOCATION</small><b>{{c.location}}</b></div>
       <div><small>EVENT TIME</small><b>{{c.event_detected_at or c.started_at}}</b></div>
-      <div><small>ASSIGNED NURSE</small><b>{{c.assigned_nurse}}</b></div>
+      <div><small>ASSIGNED REVIEWER</small><b>{{c.assigned_nurse}}</b></div>
       <div><small>PROGRESS</small><b>{{c.progress_completed}} / {{c.progress_total}}</b></div>
       <div><small>NEXT ACTION</small><b>{{c.next_action}}</b></div>
     </div>
+    {% set case_endpoint = 'hospital_agent_run' if c.module_key=='hospital' else 'agentic_run' %}
     <div class="agentic-case-actions">
-      <a href="{{url_for('agentic_run',run_id=c.run_id)}}">View case</a>
-      {% if c.status=='awaiting_approval' %}<a class="urgent" href="{{url_for('agentic_run',run_id=c.run_id)}}#approval-gate">Nurse approval</a>{% endif %}
+      <a href="{{url_for(case_endpoint,run_id=c.run_id)}}">View evidence</a>
+      {% if c.status=='awaiting_approval' %}<a class="urgent" href="{{url_for(case_endpoint,run_id=c.run_id)}}#approval-gate">Human approval</a>{% endif %}
       {% if c.teleconsultation_id %}<a href="{{url_for('teleconsult_room',consult_id=c.teleconsultation_id)}}">Teleconsultation</a>{% else %}<span>Teleconsultation pending</span>{% endif %}
-      <a href="{{url_for('agentic_run',run_id=c.run_id)}}#family-status">Family update · {{c.family_update_status}}</a>
-      <a href="{{url_for('agentic_outcome',run_id=c.run_id)}}">Outcome metrics</a>
+      <a href="{{url_for(case_endpoint,run_id=c.run_id)}}">Family update · {{c.family_update_status}}</a>
+      {% if c.module_key=='hospital' %}<a href="{{url_for('hospital_agent_run',run_id=c.run_id)}}">Outcome / trace</a>{% else %}<a href="{{url_for('agentic_outcome',run_id=c.run_id)}}">Outcome metrics</a>{% endif %}
     </div>
   </article>
   {% endfor %}
@@ -66,9 +67,9 @@
     <a href="{{url_for('patient',patient_id=p.id)}}" class="patient-row {{'agentic-priority-row' if p.agentic_case and p.agentic_case.status!='rejected' else ''}}">
       {% if p.profile_photo_path %}<img class="avatar patient-photo-sm" src="{{url_for('static',filename=p.profile_photo_path)}}" alt="{{p.first_name}} {{p.last_name}}">{% else %}<div class="avatar">{{p.first_name[0]}}{{p.last_name[0]}}</div>{% endif %}
       <div class="patient-id"><b>{{p.first_name}} {{p.last_name}}</b><small>{{p.city}} · {{p.living_setting}}</small>{% if p.agentic_case and p.agentic_case.status!='rejected' %}<small class="agentic-row-label">✦ {{p.agentic_case.alert_type}} · {{p.agentic_case.status|replace('_',' ')}}</small>{% endif %}</div>
-      <div class="metric"><small>SpO₂</small><b>{{"%.1f"|format(p.spo2 or 0)}}%</b></div>
-      <div class="metric"><small>HR</small><b>{{"%.0f"|format(p.heart_rate or 0)}}</b></div>
-      <div class="metric"><small>Activity</small><b>{{"%.0f"|format(p.activity or 0)}}</b></div>
+      <div class="metric"><small>SpO₂</small><b>{% if p.spo2 is not none %}{{"%.1f"|format(p.spo2)}}%{% else %}—{% endif %}</b></div>
+      <div class="metric"><small>HR</small><b>{% if p.heart_rate is not none %}{{"%.0f"|format(p.heart_rate)}}{% else %}—{% endif %}</b></div>
+      <div class="metric"><small>Activity</small><b>{% if p.activity is not none %}{{"%.0f"|format(p.activity)}}{% else %}—{% endif %}</b></div>
       <div><span class="risk {{p.risk_level or 'low'}}">{{(p.risk_level or 'low')|upper}} · {{p.risk_score or 0}}</span><small class="reason">{{p.risk_reason or 'Initial assessment'}}</small></div>
       <div class="arrow">›</div>
     </a>
@@ -80,9 +81,10 @@
   <div class="panel-head"><div><div class="eyebrow coral-txt">{{t("care_intelligence")|upper}}</div><h2>What changed?</h2></div></div>
   {% if agentic_cases %}
     {% for c in agentic_cases[:3] %}
-      <a href="{{url_for('agentic_run',run_id=c.run_id)}}" class="alert-item">
+      {% set case_endpoint = 'hospital_agent_run' if c.module_key=='hospital' else 'agentic_run' %}
+      <a href="{{url_for(case_endpoint,run_id=c.run_id)}}" class="alert-item">
         <span class="alert-dot {{c.severity if c.severity in ('critical','high','medium','low') else 'medium'}}"></span>
-        <div><b>{{c.first_name}} {{c.last_name}}</b><small>{{c.severity|upper}} · {{c.alert_type|lower}}, {{c.confidence}}% sensor confidence. {{c.next_action}}</small></div>
+        <div><b>{{c.first_name}} {{c.last_name}}</b><small>{{c.severity|upper}} · {{c.alert_type|lower}} · {% if c.module_key=='hospital' %}hybrid {{c.triage_score}}/100{% else %}{{c.confidence}}% sensor confidence{% endif %}. {{c.next_action}}</small></div>
       </a>
     {% endfor %}
   {% endif %}

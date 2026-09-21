@@ -1,5 +1,80 @@
 from services.db import query_db,execute_db
 
+RISK_RULE_METADATA = {
+    "fall_prediction": {
+        "label": "Fall Prediction",
+        "agent": "Risk Agent / Fall risk rules",
+        "kind": "deterministic_rule_score",
+        "calculation": "Starts at 12. Adds 22 for an active fall-risk condition, 18 for frailty, 18 when activity <55, another 12 when activity <40, 8 when sleep <50, and 18 for a fall recorded 2 minutes to 30 days ago. Capped at 100.",
+        "sources": ["conditions", "vitals.activity", "vitals.sleep", "device_events"],
+    },
+    "fall_event": {
+        "label": "Fall Event",
+        "agent": "Sensor-Fusion / Fall Intelligence",
+        "kind": "stored_event_detection_score",
+        "calculation": "Uses the latest active fall_assessments detection score if it is less than 30 minutes old and not cleared. Otherwise the score is 0. The current demo fall simulator writes 94 for its synthetic fall scenario.",
+        "sources": ["fall_assessments", "device_events"],
+    },
+    "copd": {
+        "label": "COPD / Respiratory",
+        "agent": "Risk Agent",
+        "kind": "deterministic_rule_score",
+        "calculation": "Starts at 8. Adds 22 for known COPD; 32 if SpO₂ <93 or 14 if SpO₂ <95; 22 if respiratory rate >21; 10 if heart rate >92; and 14 if activity <50. Capped at 100.",
+        "sources": ["conditions", "vitals.spo2", "vitals.resp_rate", "vitals.heart_rate", "vitals.activity"],
+    },
+    "medication": {
+        "label": "Medication",
+        "agent": "Risk Agent / Medication context",
+        "kind": "deterministic_rule_score",
+        "calculation": "10 + 28 points for each missed medication dose in the last 3 days, capped at 100.",
+        "sources": ["medication_events"],
+    },
+    "cardiac": {
+        "label": "Cardiac",
+        "agent": "Risk Agent",
+        "kind": "deterministic_rule_score",
+        "calculation": "Starts at 12. Adds 28 for heart-failure history, 18 for atrial-fibrillation history, 22 when heart rate >100, 20 when systolic BP >160, and 10 when activity <45. Capped at 100.",
+        "sources": ["conditions", "vitals.heart_rate", "vitals.bp_sys", "vitals.activity"],
+    },
+    "infection": {
+        "label": "Infection",
+        "agent": "Risk Agent",
+        "kind": "deterministic_rule_score",
+        "calculation": "Starts at 8. Adds 38 when temperature >37.8°C, 20 when respiratory rate >22, 14 when heart rate >96, and 12 when activity <45. Capped at 100.",
+        "sources": ["vitals.temperature", "vitals.resp_rate", "vitals.heart_rate", "vitals.activity"],
+    },
+    "frailty": {
+        "label": "Frailty",
+        "agent": "Risk Agent",
+        "kind": "deterministic_rule_score",
+        "calculation": "Starts at 10. Adds 30 for a frailty condition, 24 when activity <50, and 12 when sleep <45. Capped at 100.",
+        "sources": ["conditions", "vitals.activity", "vitals.sleep"],
+    },
+    "overall": {
+        "label": "Overall",
+        "agent": "Risk Agent",
+        "kind": "derived_priority",
+        "calculation": "If an active fall event score is at least 70, the fall event becomes dominant. Otherwise the highest COPD, medication, cardiac, infection or frailty score becomes dominant. Fall Prediction is not used as the overall dominant risk unless a fall event is active.",
+        "sources": ["risk_scores"],
+    },
+}
+
+RISK_LEVEL_THRESHOLDS = {
+    "critical": ">= 85",
+    "high": "70-84",
+    "medium": "45-69",
+    "low": "0-44",
+}
+
+def risk_rule_metadata(risk_type):
+    return RISK_RULE_METADATA.get(risk_type, {
+        "label": (risk_type or "Risk").replace("_", " ").title(),
+        "agent": "Risk Agent",
+        "kind": "stored_score",
+        "calculation": "Stored CareAI risk score.",
+        "sources": ["risk_scores"],
+    })
+
 def _latest(pid,kind,default=None):
     r=query_db("""
         SELECT value

@@ -113,8 +113,8 @@ def approve_hospital_run(run_id, user_id, note=""):
         return hospital_run_state(run_id)
 
     actor = _actor(user_id)
-    if not actor or actor["role"] not in ("nurse", "admin"):
-        raise PermissionError("Only an authorised nurse or admin can approve this hospital workflow")
+    if not actor or actor["role"] not in ("nurse", "gp", "admin"):
+        raise PermissionError("Only an authorised nurse, doctor/GP or admin can approve this hospital workflow")
     if actor["role"] == "nurse" and context["assigned_user_id"] and actor["id"] != context["assigned_user_id"]:
         raise PermissionError(f"This hospital workflow is assigned to {context['assigned_professional']}")
 
@@ -310,8 +310,8 @@ def reject_hospital_run(run_id, user_id, note=""):
         return hospital_run_state(run_id)
 
     actor = _actor(user_id)
-    if not actor or actor["role"] not in ("nurse", "admin"):
-        raise PermissionError("Only an authorised nurse or admin can reject this hospital workflow")
+    if not actor or actor["role"] not in ("nurse", "gp", "admin"):
+        raise PermissionError("Only an authorised nurse, doctor/GP or admin can reject this hospital workflow")
     if actor["role"] == "nurse" and context["assigned_user_id"] and actor["id"] != context["assigned_user_id"]:
         raise PermissionError(f"This hospital workflow is assigned to {context['assigned_professional']}")
 
@@ -350,6 +350,62 @@ def reject_hospital_run(run_id, user_id, note=""):
     )
     if context["anomaly_id"]:
         execute_db("UPDATE hospital_anomalies SET status='reviewed_no_action' WHERE id=?", (context["anomaly_id"],))
+    return hospital_run_state(run_id)
+
+
+def request_hospital_review(run_id, user_id, note=""):
+    """Create a human review task without approving or rejecting the workflow."""
+    init_hospital_schema()
+    context = _context(run_id)
+    if not context:
+        raise RuntimeError("Hospital workflow not found")
+    if context["run_status"] != "awaiting_approval":
+        return hospital_run_state(run_id)
+
+    actor = _actor(user_id)
+    if not actor or actor["role"] not in ("nurse", "gp", "admin"):
+        raise PermissionError("Only an authorised nurse, doctor/GP or admin can request senior clinical review")
+    if actor["role"] == "nurse" and context["assigned_user_id"] and actor["id"] != context["assigned_user_id"]:
+        raise PermissionError(f"This hospital workflow is assigned to {context['assigned_professional']}")
+
+    clean_note = (note or "").strip()[:500]
+    existing = query_db(
+        "SELECT * FROM agentic_actions WHERE run_id=? AND action_type='review_request' AND status='open' ORDER BY id DESC LIMIT 1",
+        (run_id,), one=True,
+    )
+    if not existing:
+        task_id = execute_db(
+            """INSERT INTO care_tasks(patient_id,task_type,priority,status,assigned_role,rationale,created_by)
+               VALUES(?,?,?,?,?,?,?)""",
+            (
+                context["patient_id"], "senior_clinical_review", context["severity"], "open", "gp",
+                (
+                    f"Hospital AI workflow #{run_id}: additional human clinical review requested by {actor['display_name']}. "
+                    + (f"Reviewer note: {clean_note}" if clean_note else "Review the evidence before approval or rejection.")
+                ),
+                user_id,
+            ),
+        )
+        execute_db(
+            """INSERT INTO agentic_actions(run_id,action_type,status,reference_table,reference_id,message)
+               VALUES(?,?,?,?,?,?)""",
+            (run_id, "review_request", "open", "care_tasks", task_id,
+             f"Additional clinical review requested by {actor['display_name']}"),
+        )
+        execute_db(
+            "INSERT INTO care_events(patient_id,event_type,source,description) VALUES(?,?,?,?)",
+            (context["patient_id"], "hospital_review_requested", "Hospital AI",
+             f"Workflow #{run_id}: {actor['display_name']} requested additional human clinical review before a final decision."),
+        )
+        extra = f" Additional review requested by {actor['display_name']}."
+        if clean_note:
+            extra += f" Note: {clean_note}"
+        execute_db(
+            """UPDATE agentic_steps
+               SET evidence_text=COALESCE(evidence_text,'Human approval required.') || ?
+               WHERE run_id=? AND step_no=7""",
+            (extra, run_id),
+        )
     return hospital_run_state(run_id)
 
 

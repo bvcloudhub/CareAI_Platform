@@ -171,7 +171,7 @@ def detect_anomalies(admission_id):
     rr = float(vitals.get("resp_rate", 16) or 16)
     oxygen = float(vitals.get("oxygen_lpm", 0) or 0)
     if spo2 < 92 or rr >= 24 or oxygen >= 2:
-        score = min(100, 55 + (92 - spo2) * 8 + max(0, rr - 22) * 4 + oxygen * 4)
+        score = min(100, max(70, 55 + max(0, 92 - spo2) * 8 + max(0, rr - 22) * 4 + oxygen * 4))
         severity = "critical" if score >= 85 else "high"
         add(
             "respiratory_deterioration", severity, score, "Respiratory deterioration pattern",

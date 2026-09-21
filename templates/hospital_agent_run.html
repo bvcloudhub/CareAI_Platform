@@ -26,6 +26,9 @@
   <progress max="{{steps|length}}" value="{{done}}">{{done}}/{{steps|length}}</progress>
 </div>
 
+
+{% include "_clinical_evidence_panel.html" %}
+
 <div class="hospital-agent-layout">
 <section class="panel hospital-panel">
   <div class="panel-head"><div><div class="eyebrow">CLICK ANY AGENT FOR EVIDENCE</div><h2>Hospital workflow</h2></div></div>
@@ -39,19 +42,20 @@
         <div class="hospital-time-row"><span>Started: {{s.started_at or '—'}}</span><span>Completed: {{s.completed_at or '—'}}</span></div>
 
         {% if s.step_no == 7 and s.status == 'awaiting_approval' %}
-        <div class="hospital-human-gate">
+        <div class="hospital-human-gate" id="approval-gate">
           <div><b>Responsible human review required</b><p>Steps 8–10 remain blocked. Approval can create a care task, initiate a demo specialist/virtual-care consultation and send a family update only when consent permits.</p></div>
-          {% if current_user.role in ['nurse','admin'] %}
+          {% if current_user.role in ['nurse','gp','admin'] %}
           <form method="post" class="hospital-approval-form">
             <label for="review-note">Reviewer note (optional)</label>
             <textarea id="review-note" name="note" maxlength="500" placeholder="Add clinical review context without entering unnecessary sensitive information."></textarea>
             <div class="hospital-approval-actions">
               <button class="landing-btn coral" formaction="{{url_for('hospital_agent_approve',run_id=run.id)}}">Approve proposed response</button>
+              <button class="outline-btn" formaction="{{url_for('hospital_agent_request_review',run_id=run.id)}}">Request senior review</button>
               <button class="outline-btn hospital-reject" formaction="{{url_for('hospital_agent_reject',run_id=run.id)}}">Reject / stop workflow</button>
             </div>
           </form>
           {% else %}
-          <p><b>View-only:</b> an authorised nurse or administrator must approve or reject this workflow.</p>
+          <p><b>View-only:</b> an authorised nurse, doctor/GP or administrator must approve, reject, or request additional clinical review.</p>
           {% endif %}
         </div>
         {% endif %}
@@ -72,6 +76,19 @@
     <h3>Encounter context</h3>
     <dl class="hospital-dl"><div><dt>Ward</dt><dd>{{ctx.ward}}</dd></div><div><dt>Room / Bed</dt><dd>{{ctx.room}} / {{ctx.bed}}</dd></div><div><dt>Encounter</dt><dd>{{ctx.encounter_ref}}</dd></div><div><dt>Assigned reviewer</dt><dd>{{ctx.assigned_professional or 'Responsible nurse'}}</dd></div></dl>
   </section>
+
+  {% if approval %}
+  <section class="panel hospital-panel hospital-decision-record">
+    <div class="eyebrow">HUMAN DECISION RECORD</div><h3>{{approval.decision|replace('_',' ')|title}}</h3>
+    <dl class="hospital-dl">
+      <div><dt>Reviewer</dt><dd>{{approval.reviewer_name or 'Recorded user'}}</dd></div>
+      <div><dt>Role</dt><dd>{{approval.reviewer_role|replace('gp','Doctor / GP')|title if approval.reviewer_role else 'Not recorded'}}</dd></div>
+      <div><dt>Decision time</dt><dd>{{approval.created_at or 'Not recorded'}}</dd></div>
+      <div><dt>Workflow</dt><dd>#{{run.id}} · Patient {{run.patient_id}}</dd></div>
+    </dl>
+    <p><b>Clinical note:</b> {{approval.note or 'No reviewer note recorded.'}}</p>
+  </section>
+  {% endif %}
 
   <section class="panel hospital-panel">
     <h3>Workflow outputs</h3>

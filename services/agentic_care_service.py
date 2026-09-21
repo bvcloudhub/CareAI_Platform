@@ -1551,38 +1551,70 @@ def recent_runs(limit=10):
 
 
 def dashboard_agentic_cases(limit=12):
+    # Fetch a bounded recent pool, then select one representative case per patient:
+    # the highest-priority active workflow when one exists, otherwise the latest run.
+    # This keeps Command Centre aligned with the shared clinical priority snapshot.
     rows = query_db(
         """
-        SELECT r.id run_id,r.patient_id,r.scenario,r.status,r.severity,r.started_at,r.approved_at,r.completed_at,r.summary,
+        SELECT r.id run_id,r.patient_id,r.module_key,r.scenario,r.status,r.severity,r.started_at,r.approved_at,r.completed_at,r.summary,
                p.first_name,p.last_name,p.external_ref,p.city,p.living_setting,
                e.event_type,e.event_label,e.event_detected_at context_event_at,e.location,e.sensor_confidence,e.triage_score,
-               u.display_name assigned_professional,
+               h.rule_score,h.ml_score,h.hybrid_score,h.anomaly_type,ha.ward hospital_ward,ha.room hospital_room,ha.bed hospital_bed,
+               COALESCE(ue.display_name,uh.display_name) assigned_professional,
                m.event_detected_at,m.nurse_review_at,m.approval_at,m.response_started_at,m.family_notification_at,
                m.response_time_seconds,m.intervention,m.outcome_status,m.workflow_completion_status,
                m.teleconsultation_status,m.operational_impact
         FROM agentic_runs r
         JOIN patients p ON p.id=r.patient_id
         LEFT JOIN agentic_event_context e ON e.run_id=r.id
-        LEFT JOIN users u ON u.id=e.assigned_user_id
+        LEFT JOIN users ue ON ue.id=e.assigned_user_id
+        LEFT JOIN hospital_agentic_context h ON h.run_id=r.id
+        LEFT JOIN hospital_admissions ha ON ha.id=h.admission_id
+        LEFT JOIN users uh ON uh.id=h.assigned_user_id
         LEFT JOIN agentic_workflow_metrics m ON m.run_id=r.id
         WHERE p.active=1
           AND r.severity IN ('critical','high','medium','low')
-          AND r.id IN (
-            SELECT MAX(r2.id) FROM agentic_runs r2
-            WHERE r2.severity IN ('critical','high','medium','low')
-            GROUP BY r2.patient_id
-          )
-        ORDER BY
-          CASE r.severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC,
-          COALESCE(e.triage_score,e.sensor_confidence,0) DESC,
-          r.id DESC
+        ORDER BY r.id DESC
         LIMIT ?
         """,
-        (limit,),
+        (max(limit * 20, 100),),
     )
+
+    grouped = {}
+    active_statuses = {"running", "awaiting_approval", "responding"}
+    rank = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+    for raw in rows:
+        row = dict(raw)
+        grouped.setdefault(row["patient_id"], []).append(row)
+
+    selected = []
+    for patient_rows in grouped.values():
+        active = [row for row in patient_rows if row.get("status") in active_statuses]
+        if active:
+            chosen = max(
+                active,
+                key=lambda row: (
+                    rank.get((row.get("severity") or "low").lower(), 1),
+                    int(row.get("hybrid_score") or row.get("triage_score") or row.get("sensor_confidence") or row.get("rule_score") or 0),
+                    int(row.get("run_id") or 0),
+                ),
+            )
+        else:
+            chosen = max(patient_rows, key=lambda row: int(row.get("run_id") or 0))
+        selected.append(chosen)
+
+    selected.sort(
+        key=lambda row: (
+            1 if row.get("status") in active_statuses else 0,
+            rank.get((row.get("severity") or "low").lower(), 1),
+            int(row.get("hybrid_score") or row.get("triage_score") or row.get("sensor_confidence") or row.get("rule_score") or 0),
+            int(row.get("run_id") or 0),
+        ),
+        reverse=True,
+    )
+
     result = []
-    for row in rows:
-        case = dict(row)
+    for case in selected[:limit]:
         steps = query_db("SELECT step_no,status,metadata_json,completed_at FROM agentic_steps WHERE run_id=?", (case["run_id"],))
         completed = sum(1 for step in steps if step["status"] == "completed")
         step3 = next((step for step in steps if step["step_no"] == 3), None)
@@ -1590,13 +1622,23 @@ def dashboard_agentic_cases(limit=12):
         meta3 = _loads(step3["metadata_json"] if step3 else None)
         meta5 = _loads(step5["metadata_json"] if step5 else None)
         case["progress_completed"] = completed
-        case["progress_total"] = TOTAL_STEPS
-        case["confidence"] = case.get("sensor_confidence") or meta3.get("confidence") or meta3.get("fall_confidence") or meta5.get("confidence") or 0
-        case["triage_score"] = case.get("triage_score") or meta5.get("triage_score") or case["confidence"]
-        case["alert_type"] = case.get("event_label") or ("Fall-related event" if "fall" in (case.get("scenario") or "").lower() else "Patient event")
-        case["location"] = case.get("location") or meta3.get("location") or "Location not recorded"
+        case["progress_total"] = len(steps) or TOTAL_STEPS
+
+        if case.get("module_key") == "hospital":
+            case["confidence"] = int(case.get("ml_score") or 0)
+            case["triage_score"] = int(case.get("hybrid_score") or case.get("rule_score") or 0)
+            anomaly = case.get("anomaly_type") or (case.get("scenario") or "").replace("Hospital EHR anomaly: ", "")
+            case["alert_type"] = anomaly.replace("_", " ").title() if anomaly else "Hospital clinical finding"
+            loc = [case.get("hospital_ward"), f"Room {case['hospital_room']}" if case.get("hospital_room") else None, f"Bed {case['hospital_bed']}" if case.get("hospital_bed") else None]
+            case["location"] = " · ".join(part for part in loc if part) or "Hospital location not recorded"
+        else:
+            case["confidence"] = case.get("sensor_confidence") or meta3.get("confidence") or meta3.get("fall_confidence") or meta5.get("confidence") or 0
+            case["triage_score"] = case.get("triage_score") or meta5.get("triage_score") or case["confidence"]
+            case["alert_type"] = case.get("event_label") or ("Fall-related event" if "fall" in (case.get("scenario") or "").lower() else "Patient event")
+            case["location"] = case.get("location") or meta3.get("location") or "Location not recorded"
+
         case["event_detected_at"] = case.get("context_event_at") or case.get("event_detected_at") or case.get("started_at")
-        case["assigned_nurse"] = case.get("assigned_professional") or "Responsible nurse"
+        case["assigned_nurse"] = case.get("assigned_professional") or "Responsible clinician"
         if case["status"] == "awaiting_approval":
             case["next_action"] = "Human review and approval required"
         elif case["status"] == "responding":

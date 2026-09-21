@@ -21,3 +21,10 @@
 @media(max-width:1150px){.hospital-table .hospital-th{display:none}.hospital-tr{grid-template-columns:1fr 1fr}.hospital-runs{grid-template-columns:1fr 1fr}.hybrid-ai-strip{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:900px){.hospital-ai-banner,.hospital-agent-layout,.hospital-detail-grid{grid-template-columns:1fr}.hospital-span-2{grid-column:auto}.hospital-scan-strip,.hospital-runs,.ehr-vital-grid{grid-template-columns:1fr 1fr}.hospital-page-head{display:block}.hospital-head-actions{margin-top:var(--space-3)}}
 @media(max-width:620px){.hospital-scan-strip,.hospital-runs,.ehr-vital-grid,.hybrid-ai-strip,.hospital-tr{grid-template-columns:1fr}.hospital-agent-detail{padding:0 var(--space-3) var(--space-3)}.hospital-agent-step summary{grid-template-columns:36px 1fr}.hospital-agent-step summary em{display:none}}
+
+/* Clinical evidence approval additions */
+.hospital-approval-actions { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.hospital-decision-record p { margin-bottom: 0; }
+@media (max-width: 760px) {
+  .hospital-approval-actions { grid-template-columns: 1fr; }
+}

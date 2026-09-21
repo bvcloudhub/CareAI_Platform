@@ -143,8 +143,10 @@ from services.hospital_agentic_service import (
     approve_hospital_run,
     hospital_run_state,
     reject_hospital_run,
+    request_hospital_review,
 )
 from services.openai_clinical_ai import ai_status as hospital_ai_status
+from services.clinical_evidence_service import build_clinical_evidence, priority_snapshot
 
 app = Flask(__name__)
 app.config.update(
@@ -311,30 +313,25 @@ def dashboard():
     agentic_extra_high_critical = set()
     for raw in raw_rows:
         row = dict(raw)
+        home_level = (row.get("risk_level") or "low").lower()
+        snapshot = priority_snapshot(row["id"])
         case = latest_case_by_patient.get(row["id"])
         row["agentic_case"] = case
-        if case and case["status"] != "rejected":
-            existing_level = (row.get("risk_level") or "low").lower()
-            case_level = (case.get("severity") or "low").lower()
-            if risk_rank.get(case_level, 1) > risk_rank.get(existing_level, 1):
-                row["risk_level"] = case_level
-            if case_level in ("critical", "high") and existing_level not in ("critical", "high"):
-                agentic_extra_high_critical.add(row["id"])
-            row["risk_score"] = max(
-                int(row.get("risk_score") or 0),
-                int(case.get("triage_score") or case.get("confidence") or 0),
-            )
-            row["risk_reason"] = (
-                f"Agentic event: {case['alert_type']} · {case['confidence']}% sensor confidence · "
-                f"triage {case_level} · {case['status'].replace('_',' ')}"
-            )
+        row["risk_level"] = snapshot["level"]
+        row["risk_score"] = snapshot["score"]
+        row["risk_reason"] = f"{snapshot['source']}: {snapshot['reason']}"
+        row["priority_source"] = snapshot["source"]
+        row["priority_run_id"] = snapshot.get("run_id")
+        row["priority_module_key"] = snapshot.get("module_key")
+        if snapshot["level"] in ("critical", "high") and home_level not in ("critical", "high"):
+            agentic_extra_high_critical.add(row["id"])
         rows.append(row)
 
     rows.sort(
         key=lambda row: (
             risk_rank.get((row.get("risk_level") or "low").lower(), 1),
             int(row.get("risk_score") or 0),
-            1 if row.get("agentic_case") and row["agentic_case"]["status"] != "rejected" else 0,
+            1 if row.get("priority_run_id") else 0,
         ),
         reverse=True,
     )
@@ -404,6 +401,7 @@ def patient(patient_id):
         "alerts": query_db("SELECT * FROM alerts WHERE patient_id=? ORDER BY created_at DESC LIMIT 30", (patient_id,)),
         "agent_summary": summarize_patient(patient_id),
         "patient_contact": patient_primary_contact(patient_id),
+        "clinical_evidence": build_clinical_evidence(patient_id),
     }
     audit("VIEW_PATIENT_360", patient_id, f"tab={active_tab}")
     return render_template("patient.html", **data)
@@ -1055,12 +1053,13 @@ def hospital_agent_run(run_id):
         metrics=state["metrics"],
         ai_results=hospital_agent_results(run_id),
         ai=hospital_ai_status(),
+        clinical_evidence=build_clinical_evidence(run["patient_id"], run_id=run_id),
     )
 
 
 @app.route("/hospital/run/<int:run_id>/approve", methods=["POST"])
 @login_required
-@role_required("admin", "nurse")
+@role_required("admin", "nurse", "gp")
 def hospital_agent_approve(run_id):
     try:
         state = approve_hospital_run(run_id, current_user.id, request.form.get("note", ""))
@@ -1075,7 +1074,7 @@ def hospital_agent_approve(run_id):
 
 @app.route("/hospital/run/<int:run_id>/reject", methods=["POST"])
 @login_required
-@role_required("admin", "nurse")
+@role_required("admin", "nurse", "gp")
 def hospital_agent_reject(run_id):
     try:
         state = reject_hospital_run(run_id, current_user.id, request.form.get("note", ""))
@@ -1085,6 +1084,21 @@ def hospital_agent_reject(run_id):
     patient_id = state["run"]["patient_id"] if state else None
     audit("HOSPITAL_AGENT_REJECTED", patient_id, f"run={run_id}")
     flash("Hospital workflow stopped by the human reviewer. No downstream actions were executed.", "warning")
+    return redirect(url_for("hospital_agent_run", run_id=run_id))
+
+
+@app.route("/hospital/run/<int:run_id>/request-review", methods=["POST"])
+@login_required
+@role_required("admin", "nurse", "gp")
+def hospital_agent_request_review(run_id):
+    try:
+        state = request_hospital_review(run_id, current_user.id, request.form.get("note", ""))
+    except PermissionError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("hospital_agent_run", run_id=run_id))
+    patient_id = state["run"]["patient_id"] if state else None
+    audit("HOSPITAL_AGENT_REVIEW_REQUESTED", patient_id, f"run={run_id}")
+    flash("Additional human clinical review requested. The workflow remains awaiting approval.", "warning")
     return redirect(url_for("hospital_agent_run", run_id=run_id))
 
 

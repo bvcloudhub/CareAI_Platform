@@ -7,7 +7,7 @@
       <a href="{{url_for('patients_page')}}" class="back">← Patients</a>
       <div class="eyebrow">{{p.external_ref}} · {{p.city or 'Location not set'}} · {{p.living_setting or 'Setting not set'}}</div>
       <h1>{{p.first_name}} {{p.last_name}}</h1>
-      <p>{{agent_summary}}</p>
+      <p><b>{{clinical_evidence.priority.level|upper}}</b> · {{clinical_evidence.priority.source}} — {{clinical_evidence.priority.reason|truncate(240)}}</p>
       {% if not p.active %}<span class="status-chip archived">Archived · history retained</span>{% endif %}
     </div>
   </div>
@@ -22,97 +22,23 @@
 </div>
 
 <div class="patient-summary">
-
-  <div class="vital-card" data-metric="spo2">
-    <small>SpO₂</small>
-    <strong>
-      {% if latest.spo2 is not none %}
-        {{"%.1f"|format(latest.spo2)}}%
-      {% else %}
-        —
-      {% endif %}
-    </strong>
-    <span class="vital-meta">
-      {{latest_meta.spo2.source if latest_meta.spo2 else 'No data'}}
-    </span>
-    <span class="history-hint">View history →</span>
-  </div>
-
-  <div class="vital-card" data-metric="heart_rate">
-    <small>Heart rate</small>
-    <strong>
-      {% if latest.heart_rate is not none %}
-        {{"%.0f"|format(latest.heart_rate)}} bpm
-      {% else %}
-        —
-      {% endif %}
-    </strong>
-    <span class="vital-meta">
-      {{latest_meta.heart_rate.source if latest_meta.heart_rate else 'No data'}}
-    </span>
-    <span class="history-hint">View history →</span>
-  </div>
-
-  <div class="vital-card" data-metric="resp_rate">
-    <small>Respiration</small>
-    <strong>
-      {% if latest.resp_rate is not none %}
-        {{"%.0f"|format(latest.resp_rate)}} /min
-      {% else %}
-        —
-      {% endif %}
-    </strong>
-    <span class="vital-meta">
-      {{latest_meta.resp_rate.source if latest_meta.resp_rate else 'No data'}}
-    </span>
-    <span class="history-hint">View history →</span>
-  </div>
-
-  <div class="vital-card" data-metric="bp">
-    <small>Blood pressure</small>
-    <strong>
-      {% if latest.bp_sys is not none and latest.bp_dia is not none %}
-        {{"%.0f"|format(latest.bp_sys)}} / {{"%.0f"|format(latest.bp_dia)}}
-      {% else %}
-        —
-      {% endif %}
-    </strong>
-    <span class="vital-meta">
-      {{latest_meta.bp_sys.source if latest_meta.bp_sys else 'No data'}}
-    </span>
-    <span class="history-hint">View history →</span>
-  </div>
-
-  <div class="vital-card" data-metric="activity">
-    <small>Activity</small>
-    <strong>
-      {% if latest.activity is not none %}
-        {{"%.0f"|format(latest.activity)}}
-      {% else %}
-        —
-      {% endif %}
-    </strong>
-    <span class="vital-meta">
-      {{latest_meta.activity.source if latest_meta.activity else 'No data'}}
-    </span>
-    <span class="history-hint">View history →</span>
-  </div>
-
-  <div class="vital-card" data-metric="sleep">
-    <small>Sleep</small>
-    <strong>
-      {% if latest.sleep is not none %}
-        {{"%.0f"|format(latest.sleep)}}
-      {% else %}
-        —
-      {% endif %}
-    </strong>
-    <span class="vital-meta">
-      {{latest_meta.sleep.source if latest_meta.sleep else 'No data'}}
-    </span>
-    <span class="history-hint">View history →</span>
-  </div>
-
+  {% if clinical_evidence.workflow and clinical_evidence.workflow.module_key == 'hospital' %}
+    {% for m in clinical_evidence.clinical_data[:6] %}
+    <div class="vital-card hospital-context-card">
+      <small>{{m.label}}</small>
+      <strong>{% if m.value is not none %}{{m.value}} {{m.unit}}{% else %}—{% endif %}</strong>
+      <span class="vital-meta">{{m.source or 'No data'}}</span>
+      <span class="history-hint">{{m.measured_at or 'Timestamp unavailable'}} · {{m.freshness.state|title}}</span>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="vital-card" data-metric="spo2"><small>SpO₂</small><strong>{% if latest.spo2 is not none %}{{"%.1f"|format(latest.spo2)}}%{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.spo2.source if latest_meta.spo2 else 'No data'}}</span><span class="history-hint">View history →</span></div>
+    <div class="vital-card" data-metric="heart_rate"><small>Heart rate</small><strong>{% if latest.heart_rate is not none %}{{"%.0f"|format(latest.heart_rate)}} bpm{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.heart_rate.source if latest_meta.heart_rate else 'No data'}}</span><span class="history-hint">View history →</span></div>
+    <div class="vital-card" data-metric="resp_rate"><small>Respiration</small><strong>{% if latest.resp_rate is not none %}{{"%.0f"|format(latest.resp_rate)}} /min{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.resp_rate.source if latest_meta.resp_rate else 'No data'}}</span><span class="history-hint">View history →</span></div>
+    <div class="vital-card" data-metric="bp"><small>Blood pressure</small><strong>{% if latest.bp_sys is not none and latest.bp_dia is not none %}{{"%.0f"|format(latest.bp_sys)}} / {{"%.0f"|format(latest.bp_dia)}}{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.bp_sys.source if latest_meta.bp_sys else 'No data'}}</span><span class="history-hint">View history →</span></div>
+    <div class="vital-card" data-metric="activity"><small>Activity</small><strong>{% if latest.activity is not none %}{{"%.0f"|format(latest.activity)}}{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.activity.source if latest_meta.activity else 'No data'}}</span><span class="history-hint">View history →</span></div>
+    <div class="vital-card" data-metric="sleep"><small>Sleep</small><strong>{% if latest.sleep is not none %}{{"%.0f"|format(latest.sleep)}}{% else %}—{% endif %}</strong><span class="vital-meta">{{latest_meta.sleep.source if latest_meta.sleep else 'No data'}}</span><span class="history-hint">View history →</span></div>
+  {% endif %}
 </div>
 
 <nav class="patient-360-tabs" aria-label="Patient 360 sections">
@@ -135,20 +61,21 @@
     <div><small>Family / emergency</small><b>{{patient_contact.display_name if patient_contact else 'No authorised contact'}}</b><span>{{patient_contact.relationship if patient_contact else 'Not configured'}}</span></div>
   </div>
 </section>
+
+{% include "_clinical_evidence_panel.html" %}
+
 <div class="grid-12">
   <section class="panel span-8">
     <div class="panel-head">
       <div><div class="eyebrow">UNDERSTAND + PREDICT</div><h2>Care intelligence</h2></div>
-      <span class="badge">Explainable rules v0.2</span>
+      <span class="badge">Explainable rules v0.3 · rule indices, not probabilities</span>
     </div>
     <div class="risk-grid">
-      {% for r in risks %}
-        {% if r.risk_type!='overall' %}
+      {% for r in clinical_evidence.risk_breakdown %}
         <article>
-          <div><small>{{r.risk_type|replace('_',' ')|upper}}</small><strong class="{{r.level}}">{{r.score}}</strong></div>
-          <p>{{r.explanation}}</p><span>{{r.evidence}}</span>
+          <div><small>{{r.label|upper}}</small><strong class="{{r.level}}">{{r.score}}</strong></div>
+          <p>{{r.explanation}}</p><span>{{r.evidence}} · {{r.origin_label}}</span>
         </article>
-        {% endif %}
       {% else %}
         <div class="empty light">No risk scores are available for this patient.</div>
       {% endfor %}

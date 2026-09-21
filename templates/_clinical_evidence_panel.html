@@ -1,0 +1,154 @@
+{% if clinical_evidence %}
+{% set ce = clinical_evidence %}
+<section class="panel clinical-evidence-panel" id="clinical-evidence">
+  <div class="clinical-evidence-head">
+    <div>
+      <div class="eyebrow">CLINICAL REVIEW · AI EVIDENCE</div>
+      <h2>Why CareAI assigned {{ce.priority.level|upper}}</h2>
+      <p>Review the patient data, rule evidence and agent trail before any human approval. CareAI is decision support only.</p>
+    </div>
+    <div class="clinical-priority-badge {{ce.priority.level}}">
+      <small>OVERALL PRIORITY</small>
+      <strong>{{ce.priority.level|upper}}</strong>
+      <span>{{ce.priority.score}} / 100 · {{ce.priority.source}}</span>
+      <small>Updated {{ce.priority.updated_at or 'timestamp unavailable'}}</small>
+    </div>
+  </div>
+
+  <div class="clinical-origin-note">
+    <b>Data origin:</b> {{ce.data_origin}}.
+    {% if ce.workflow and ce.workflow.module_key == 'hospital' %}
+      The hospital priority comes from the inpatient anomaly + hybrid triage workflow. The seven Care Intelligence cards below are the existing remote-care rule indices and are shown separately so they are not mistaken for the hospital hybrid score.
+    {% endif %}
+  </div>
+
+  <div class="clinical-section-title"><div><div class="eyebrow">PATIENT CONTEXT</div><h3>Who is being reviewed</h3></div></div>
+  <div class="clinical-patient-grid">
+    <article><small>Patient</small><b>{{ce.patient.name}}</b><span>{{ce.patient.external_ref or 'No external ID'}}</span></article>
+    <article><small>Age / DOB</small><b>{{ce.patient.age if ce.patient.age is not none else '—'}}{% if ce.patient.age is not none %} years{% endif %}</b><span>{{ce.patient.birth_date or 'DOB unavailable'}}</span></article>
+    <article><small>Current location</small><b>{{ce.patient.location}}</b><span>{{ce.patient.sex or 'Sex not recorded'}}</span></article>
+    <article><small>Assigned nurse</small><b>{{ce.patient.assigned_nurse}}</b><span>Human review owner where assigned</span></article>
+    <article><small>Clinician / doctor</small><b>{{ce.patient.assigned_clinician}}</b><span>Clinical decision remains human-controlled</span></article>
+    <article><small>Fall risk</small><b>{% if ce.patient.fall_risk %}{{ce.patient.fall_risk.score}} / 100 · {{ce.patient.fall_risk.level|upper}}{% else %}Not available{% endif %}</b><span>{% if ce.patient.fall_risk %}{{ce.patient.fall_risk.explanation}}{% else %}No current fall-prediction score{% endif %}</span></article>
+  </div>
+
+  <div class="clinical-two-col">
+    <section class="clinical-subcard">
+      <h4>Relevant conditions / history</h4>
+      <div class="clinical-chip-list">
+        {% for c in ce.patient.conditions %}<span>{{c.display}}</span>{% else %}<span>No active conditions recorded</span>{% endfor %}
+      </div>
+    </section>
+    <section class="clinical-subcard">
+      <h4>Current medications</h4>
+      <div class="clinical-med-list">
+        {% for m in ce.patient.medications %}<p><b>{{m.name}}</b><span>{{m.dose or 'Dose not recorded'}}{% if m.schedule %} · {{m.schedule}}{% endif %}</span></p>{% else %}<p><span>No active medication list available</span></p>{% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <div class="clinical-section-title"><div><div class="eyebrow">LATEST CLINICAL DATA</div><h3>Measurements used for review</h3></div><small>{{ce.freshness_note}}</small></div>
+  <div class="clinical-metric-grid">
+    {% for m in ce.clinical_data %}
+    <article class="clinical-metric {{m.freshness.state}}">
+      <div><small>{{m.label}}</small><span class="freshness-pill {{m.freshness.state}}">{{m.freshness.label}}</span></div>
+      <strong>{% if m.value is not none %}{{m.value}} {{m.unit}}{% else %}Missing{% endif %}</strong>
+      <span>Source: {{m.source or 'Not recorded'}}</span>
+      <span>Measured: {{m.measured_at or 'Timestamp unavailable'}}</span>
+    </article>
+    {% else %}<div class="clinical-empty">No current clinical measurements are available.</div>{% endfor %}
+  </div>
+
+  {% if ce.hospital %}
+  <div class="clinical-two-col clinical-hospital-evidence">
+    <section class="clinical-subcard">
+      <h4>Latest hospital labs</h4>
+      <div class="clinical-table-wrap">
+        <table class="clinical-table"><thead><tr><th>Test</th><th>Value</th><th>Flag</th><th>Collected</th></tr></thead><tbody>
+          {% for lab in ce.hospital.labs %}<tr><td>{{lab.test_name}}</td><td>{{lab.value}} {{lab.unit or ''}}</td><td>{{lab.flag or '—'}}</td><td>{{lab.collected_at}}</td></tr>{% else %}<tr><td colspan="4">No lab results available.</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+    </section>
+    <section class="clinical-subcard">
+      <h4>Recent hospital medication administration</h4>
+      <div class="clinical-med-list">
+        {% for med in ce.hospital.med_admin[:5] %}<p><b>{{med.medication_name}}</b><span>{{med.dose or 'Dose unavailable'}} · {{med.status or 'status unavailable'}} · {{med.scheduled_at}}</span></p>{% else %}<p><span>No medication-administration records available.</span></p>{% endfor %}
+      </div>
+      <small class="clinical-helper">Hospital medication-administration data are encounter records and may differ from the remote-care medication list above.</small>
+    </section>
+  </div>
+  {% endif %}
+
+  <div class="clinical-section-title"><div><div class="eyebrow">RISK BREAKDOWN</div><h3>Existing Care Intelligence risk indices</h3></div><small>Thresholds: Low &lt;45 · Medium 45–69 · High 70–84 · Critical ≥85</small></div>
+  <div class="clinical-risk-list">
+    {% for r in ce.risk_breakdown %}
+    <details class="clinical-risk-row {{r.level}}">
+      <summary>
+        <span><b>{{r.label}}</b><small>{{r.explanation}}</small></span>
+        <strong>{{r.score}} <em>{{r.level|upper}}</em></strong>
+      </summary>
+      <div class="clinical-risk-detail">
+        <div class="clinical-risk-meta">
+          <p><small>Calculated by</small><b>{{r.agent}}</b></p>
+          <p><small>Implementation</small><b>{{r.implementation|replace('_',' ')|title}}</b></p>
+          <p><small>Updated</small><b>{{r.created_at}}</b></p>
+          <p><small>Origin</small><b>{{r.origin_label}}</b></p>
+        </div>
+        <p class="clinical-formula"><b>Current rule:</b> {{r.calculation}}</p>
+        <p><b>Stored explanation:</b> {{r.evidence or 'No evidence text stored.'}}</p>
+        <div class="clinical-input-grid">
+          {% for inp in r.inputs %}<div><small>{{inp.label}}</small><b>{{inp.value}}</b><span>{{inp.source}}</span></div>{% else %}<div><span>No supporting input snapshot available.</span></div>{% endfor %}
+        </div>
+      </div>
+    </details>
+    {% else %}<div class="clinical-empty">No Care Intelligence risk scores have been stored for this patient.</div>{% endfor %}
+  </div>
+
+  <div class="clinical-two-col">
+    <section class="clinical-subcard why-priority-card">
+      <div class="eyebrow">WHY {{ce.priority.level|upper}}?</div>
+      <h3>Main contributing evidence</h3>
+      <div class="why-factor-list">
+        {% for factor in ce.why_priority %}<p><b>{{factor.label}}</b><span>{{factor.value}}</span></p>{% else %}<p><span>No structured contributing-factor list is stored for this workflow.</span></p>{% endfor %}
+      </div>
+      {% if ce.workflow and ce.workflow.module_key == 'hospital' %}
+      <div class="clinical-score-mechanics">
+        <p><small>Rule safety floor</small><b>{{ce.workflow.rule_score if ce.workflow.rule_score is not none else '—'}} / 100</b></p>
+        <p><small>ML anomaly support</small><b>{{ce.workflow.ml_score if ce.workflow.ml_score is not none else '—'}} / 100</b></p>
+        <p><small>Hybrid triage</small><b>{{ce.workflow.hybrid_score if ce.workflow.hybrid_score is not none else '—'}} / 100</b></p>
+      </div>
+      <small class="clinical-helper">The ML number is an anomaly score, not a calibrated probability of disease. A critical deterministic hospital rule cannot be downgraded by the ML/LLM layer.</small>
+      {% endif %}
+    </section>
+
+    <section class="clinical-subcard">
+      <div class="eyebrow">RECOMMENDED HUMAN NEXT STEP</div>
+      <h3>Decision support, not autonomous treatment</h3>
+      <p>{{ce.recommendation or 'Review the available evidence and decide the next clinical action under local protocol.'}}</p>
+      {% if ce.missing_or_stale %}
+      <div class="clinical-data-gaps"><b>Missing / stale data</b>{% for gap in ce.missing_or_stale %}<span>{{gap}}</span>{% endfor %}</div>
+      {% else %}<div class="clinical-data-gaps clear"><b>Data availability</b><span>No missing or stale values were identified in the displayed current-measurement set.</span></div>{% endif %}
+    </section>
+  </div>
+
+  {% if ce.agent_trail %}
+  <div class="clinical-section-title"><div><div class="eyebrow">AGENT DECISION TRAIL</div><h3>What ran and what is waiting</h3></div></div>
+  <div class="clinical-agent-trail">
+    {% for s in ce.agent_trail %}
+    <div class="clinical-agent-node {{s.status}}"><span>{{s.step_no}}</span><div><b>{{s.agent_name}}</b><small>{{s.action_text}}</small></div><em>{{s.status|replace('_',' ')|title}}</em></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if ce.workflow and ce.workflow.id %}
+  <div class="clinical-evidence-actions">
+    {% if ce.workflow.module_key == 'hospital' %}
+      <a class="outline-btn" href="{{url_for('hospital_agent_run',run_id=ce.workflow.id)}}#clinical-evidence">Open Hospital AI evidence</a>
+      {% if ce.workflow.status == 'awaiting_approval' %}<a class="landing-btn coral" href="{{url_for('hospital_agent_run',run_id=ce.workflow.id)}}#approval-gate">Go to human approval</a>{% endif %}
+    {% elif ce.workflow.module_key %}
+      <a class="outline-btn" href="{{url_for('agentic_run',run_id=ce.workflow.id)}}">Open Agentic Care workflow</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
