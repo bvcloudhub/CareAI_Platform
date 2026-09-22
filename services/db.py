@@ -642,7 +642,7 @@ def init_db(force_seed=False):
 
     if conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]==0:
         for email,role,name in [
-            ("admin@care.ai","admin","Demo Administrator"),
+            ("admin@care.ai","admin","Care.AI Administrator"),
             ("nurse@care.ai","nurse","Sophie de Jong"),
             ("gp@care.ai","gp","Dr. Eva van Dijk")
         ]:
@@ -688,5 +688,12 @@ def init_db(force_seed=False):
           consent_reference,expires_at,active
         ) VALUES(?,?,?,?,?,?,?,?,?,?)""",rows)
         conn.commit()
+
+    # Earlier seeds wrote 'demo' into display text; rename only those exact seeded values.
+    conn.execute("UPDATE users SET display_name='Care.AI Administrator' WHERE email='admin@care.ai' AND display_name='Demo Administrator'")
+    conn.execute("UPDATE patients SET emergency_contact_name='Family Contact' WHERE emergency_contact_name='Demo Family Contact'")
+    conn.execute("UPDATE care_events SET description='Synthetic person enrolled in Care.AI EU' "
+                 "WHERE event_type='enrolment' AND description='Synthetic person enrolled in Care.AI EU demo'")
+    conn.commit()
 
     conn.close()

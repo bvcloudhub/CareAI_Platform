@@ -61,7 +61,7 @@
 
 <div class="grid-12">
 <section class="panel span-8">
-  <div class="panel-head"><div><div class="eyebrow">RISK-LED CARE</div><h2>{{t("priority_queue")}}</h2></div><span class="badge">Live synthetic demo</span></div>
+  <div class="panel-head"><div><div class="eyebrow">RISK-LED CARE</div><h2>{{t("priority_queue")}}</h2></div><span class="badge">Live synthetic data</span></div>
   <div class="patient-list">
   {% for p in patients %}
     <a href="{{url_for('patient',patient_id=p.id)}}" class="patient-row {{'agentic-priority-row' if p.agentic_case and p.agentic_case.status!='rejected' else ''}}">

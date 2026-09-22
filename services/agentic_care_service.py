@@ -60,7 +60,7 @@ AGENT_CATALOG = [
     (
         "Care Coordination Agent",
         "Follow-up is manual and inconsistent",
-        "Creates approved demo tasks, identifies the responsible professional and tracks progress.",
+        "Creates approved tasks, identifies the responsible professional and tracks progress.",
     ),
     (
         "Virtual Care Agent",
@@ -569,7 +569,7 @@ def create_patient_event_run(
             "running",
             "not_started",
             "pending",
-            "Controlled-autonomy demo in progress",
+            "Controlled-autonomy workflow in progress",
         ),
     )
 

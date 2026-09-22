@@ -15,7 +15,7 @@
     </form>
     {% elif current_user.role == 'admin' %}
     <form method="post" action="{{url_for('hospital_demo_seed')}}">
-      <button class="landing-btn coral" type="submit">Load synthetic hospital demo</button>
+      <button class="landing-btn coral" type="submit">Load synthetic hospital data</button>
     </form>
     {% endif %}
   </div>
@@ -45,9 +45,9 @@
 {% if not demo.loaded %}
 <section class="panel hospital-empty-state">
   <div class="eyebrow">NO HOSPITAL ENCOUNTERS YET</div>
-  <h2>Hospital AI is installed but no inpatient demo data has been loaded.</h2>
-  <p>The integration does not silently create hospital records. An administrator can load a clearly labelled synthetic inpatient dataset that references existing demo patients without changing their core patient records.</p>
-  {% if current_user.role != 'admin' %}<p><b>Ask an administrator to load the synthetic hospital demo once.</b></p>{% endif %}
+  <h2>Hospital AI is installed but no inpatient data has been loaded.</h2>
+  <p>The integration does not silently create hospital records. An administrator can load a clearly labelled synthetic inpatient dataset that references existing patients without changing their core patient records.</p>
+  {% if current_user.role != 'admin' %}<p><b>Ask an administrator to load the synthetic hospital data once.</b></p>{% endif %}
 </section>
 {% else %}
 <div class="hospital-scan-strip">
@@ -60,7 +60,7 @@
 <section class="panel hospital-panel">
   <div class="panel-head">
     <div><div class="eyebrow">WARD COMMAND CENTRE</div><h2>Admitted patients ranked by anomaly risk</h2></div>
-    <span class="hospital-demo-badge">Synthetic EHR demo</span>
+    <span class="hospital-demo-badge">Synthetic EHR</span>
   </div>
   <div class="hospital-table" role="table" aria-label="Admitted patients">
     <div class="hospital-th" role="row"><span>Patient</span><span>Location</span><span>Reason</span><span>Latest vitals</span><span>Hybrid AI finding</span><span></span></div>

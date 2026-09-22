@@ -36,7 +36,7 @@ def seed_database(conn):
             emergency_contact_name,emergency_contact_relation,consent_monitoring,consent_updated_at,
             lawful_basis,purpose_code,data_residency,retention_until,current_status
         ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (ext,fn,ln,dob,sex,city,setting,gp,"Demo Family Contact","family",1,now.isoformat(timespec="seconds"),
+        (ext,fn,ln,dob,sex,city,setting,gp,"Family Contact","family",1,now.isoformat(timespec="seconds"),
          "demo_synthetic","remote_care_demo","EU",(now+timedelta(days=365)).date().isoformat(),status))
         pid=cur.lastrowid
         for code,display in conditions:
@@ -84,4 +84,4 @@ def seed_database(conn):
         conn.execute("INSERT INTO device_events(patient_id,device_type,event_type,value,severity,location) VALUES(?,?,?,?,?,?)",
                      (pid,"bed_sensor","sleep_presence","present","info","Bedroom"))
         conn.execute("INSERT INTO care_events(patient_id,event_type,source,description) VALUES(?,?,?,?)",
-                     (pid,"enrolment","platform","Synthetic person enrolled in Care.AI EU demo"))
+                     (pid,"enrolment","platform","Synthetic person enrolled in Care.AI EU"))

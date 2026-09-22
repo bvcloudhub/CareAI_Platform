@@ -72,12 +72,12 @@ def patient_answer(patient_id, question):
         if overall and overall["level"] in ("high","critical"):
             msg += " Care.AI has flagged something that should be reviewed by your care team."
         else:
-            msg += " There is no new urgent alert in this demo."
+            msg += " There is no new urgent alert right now."
         msg += " I can explain your readings, help you send a question to your nurse, or show your care plan."
         return {"answer":msg,"safety":"normal"}
 
     if "oxygen" in q or "spo2" in q or "breathing" in q:
-        return {"answer":f"Your latest oxygen reading in this demo is {_reading(v.get('spo2'), '.1f', '%')}. I can explain what Care.AI has noticed, but I can't diagnose you. If you feel breathless or unwell, contact your care team; if symptoms are severe, use your emergency plan.","safety":"normal"}
+        return {"answer":f"Your latest oxygen reading is {_reading(v.get('spo2'), '.1f', '%')}. I can explain what Care.AI has noticed, but I can't diagnose you. If you feel breathless or unwell, contact your care team; if symptoms are severe, use your emergency plan.","safety":"normal"}
 
     if "fall" in q:
         event=rm.get("fall_event")

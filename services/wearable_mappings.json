@@ -40,7 +40,7 @@
     }
   },
   "demo_band": {
-    "label": "Demo Band",
+    "label": "Generic Band",
     "sdk": "Generic Wearable API",
     "icon": "⌚",
     "records_key": "data",

@@ -174,7 +174,7 @@ def approve_hospital_run(run_id, user_id, note=""):
            ) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
         (
             context["patient_id"], "clinician", user_id, "gp", "Hospital specialist / virtual care",
-            "requested", f"Demo hospital review linked to {context['encounter_ref']} · {context['headline'] or context['anomaly_type']}",
+            "requested", f"Hospital review linked to {context['encounter_ref']} · {context['headline'] or context['anomaly_type']}",
             _new_room_code(),
         ),
     )

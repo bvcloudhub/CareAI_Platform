@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS hospital_admissions(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   encounter_ref TEXT UNIQUE NOT NULL,
-  hospital_name TEXT DEFAULT 'Care.AI Demo University Hospital',
+  hospital_name TEXT DEFAULT 'Care.AI University Hospital',
   ward TEXT NOT NULL,
   room TEXT,
   bed TEXT,
@@ -157,11 +157,18 @@ CREATE INDEX IF NOT EXISTS idx_hospital_agentic_context_admission
 """
 
 
+def _rename_legacy_hospital_name(conn) -> None:
+    # Databases created before the rename keep the old column default, so fix seeded rows.
+    conn.execute("UPDATE hospital_admissions SET hospital_name='Care.AI University Hospital' "
+                 "WHERE hospital_name='Care.AI Demo University Hospital'")
+
+
 def init_hospital_schema() -> None:
     """Create hospital-only tables. Safe to call repeatedly."""
     conn = get_conn()
     try:
         conn.executescript(HOSPITAL_SCHEMA)
+        _rename_legacy_hospital_name(conn)
         conn.commit()
     finally:
         conn.close()
@@ -190,7 +197,7 @@ def seed_hospital_demo_data() -> dict:
     try:
         existing_count = conn.execute("SELECT COUNT(*) c FROM hospital_admissions").fetchone()["c"]
         if existing_count:
-            return {"created": False, "admissions": existing_count, "reason": "Hospital demo data already exists"}
+            return {"created": False, "admissions": existing_count, "reason": "Hospital data already exists"}
 
         patients = conn.execute(
             "SELECT id,external_ref,first_name,last_name FROM patients WHERE active=1 ORDER BY id LIMIT 8"
@@ -330,7 +337,8 @@ def seed_hospital_demo_data() -> dict:
                 ),
             )
 
+        _rename_legacy_hospital_name(conn)
         conn.commit()
-        return {"created": True, "admissions": len(admission_ids), "reason": "Synthetic hospital demo loaded"}
+        return {"created": True, "admissions": len(admission_ids), "reason": "Synthetic hospital data loaded"}
     finally:
         conn.close()
