@@ -2099,6 +2099,6 @@ if __name__ == "__main__":
     start_optional_hospital_scheduler()
     app.run(
         host=os.getenv("CAREAI_HOST", "127.0.0.1"),
-        port=int(os.getenv("CAREAI_PORT", "5002")),
+        port=int(os.getenv("CAREAI_PORT", "5000")),
         debug=os.getenv("CAREAI_ENV", "development") == "development",
     )
