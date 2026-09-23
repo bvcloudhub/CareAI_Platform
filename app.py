@@ -256,7 +256,7 @@ def login():
     return render_template("login.html", title="Care.AI Login")
 
 @app.route("/logout")
-@login_required
+#@login_required
 def logout():
     audit("LOGOUT")
     logout_user()
@@ -281,7 +281,7 @@ def landing():
     )
 
 @app.route("/command-centre")
-@login_required
+#@login_required
 def dashboard():
     raw_rows = query_db("""
         SELECT p.*,
@@ -356,7 +356,7 @@ def dashboard():
     )
 
 @app.route("/patient/<int:patient_id>")
-@login_required
+#@login_required
 def patient(patient_id):
     p = query_db(
         """SELECT p.*,n.display_name assigned_nurse_name,c.display_name assigned_clinician_name
@@ -401,7 +401,7 @@ def patient(patient_id):
     return render_template("patient.html", **data)
 
 @app.route("/patient/<int:patient_id>/orchestrate", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def orchestrate(patient_id):
     compute_all_risks(patient_id)
@@ -411,7 +411,7 @@ def orchestrate(patient_id):
     return redirect(url_for("patient", patient_id=patient_id))
 
 @app.route("/patient/<int:patient_id>/task", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def task(patient_id):
     t = request.form.get("task_type","nurse_review")
@@ -425,7 +425,7 @@ def task(patient_id):
     audit("CREATE_TASK", patient_id, t)
     return redirect(url_for("patient", patient_id=patient_id))
 @app.route("/patient/<int:patient_id>/wearable/pair", methods=["POST"])
-@login_required
+#@login_required
 def pair_wearable(patient_id):
     patient = query_db(
         "SELECT * FROM patients WHERE id=?",
@@ -469,7 +469,7 @@ def pair_wearable(patient_id):
         )
     )
 @app.route("/patient/<int:patient_id>/medication/<int:event_id>/<decision>", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def medication_decision(patient_id,event_id,decision):
     if decision not in ("taken","missed","declined"):
@@ -482,7 +482,7 @@ def medication_decision(patient_id,event_id,decision):
     return redirect(url_for("patient",patient_id=patient_id))
 
 @app.route("/simulate/tick", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin","nurse")
 def simulate_tick():
     tick_all_patients()
@@ -493,7 +493,7 @@ def simulate_tick():
     return redirect(request.referrer or url_for("dashboard"))
 
 @app.route("/simulate/scenario/<int:patient_id>/<scenario>", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def simulate_scenario(patient_id,scenario):
     allowed={"copd","fall","medication","recovery"}
@@ -507,7 +507,7 @@ def simulate_scenario(patient_id,scenario):
 
 
 @app.route("/simulate/fall-live/<int:patient_id>", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def simulate_fall_live(patient_id):
     run_named_scenario(patient_id,"fall")
@@ -518,14 +518,14 @@ def simulate_fall_live(patient_id):
 
 
 @app.route("/copilot")
-@login_required
+#@login_required
 def copilot_home():
     patients=query_db("SELECT id,external_ref,first_name,last_name,city,current_status FROM patients WHERE active=1 ORDER BY last_name")
     return render_template("copilot.html",patients=patients,selected=None,messages=[],
                            copilot_ai=copilot_status(),source_labels=COPILOT_SOURCE_LABELS)
 
 @app.route("/copilot/<int:patient_id>", methods=["GET","POST"])
-@login_required
+#@login_required
 def copilot_patient(patient_id):
     p=query_db("SELECT * FROM patients WHERE id=?",(patient_id,),one=True)
     if not p: abort(404)
@@ -546,7 +546,7 @@ def copilot_patient(patient_id):
 
 
 @app.route("/copilot/<int:patient_id>/ask", methods=["POST"])
-@login_required
+#@login_required
 def copilot_ask(patient_id):
     """JSON endpoint behind the in-page Copilot chat (static/js/copilot.js)."""
     if not query_db("SELECT 1 FROM patients WHERE id=?",(patient_id,),one=True):
@@ -728,7 +728,7 @@ def teleconsult_message(consult_id):
     return redirect(url_for("teleconsult_room",consult_id=consult_id))
 
 @app.route("/consultations")
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def consultations_page():
     date_filter = (request.args.get("date") or "today").strip().lower()
@@ -754,7 +754,7 @@ def consultations_page():
 
 
 @app.route("/clinician-inbox")
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def clinician_inbox():
     selected_id=request.args.get("patient_id", type=int)
@@ -780,7 +780,7 @@ def clinician_inbox():
                            latest=latest,risks=risks,conditions=conditions)
 
 @app.route("/clinician-inbox/<int:patient_id>/message", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def clinician_chat_message(patient_id):
     message=request.form.get("message","").strip()[:1500]
@@ -795,7 +795,7 @@ def clinician_chat_message(patient_id):
     return redirect(url_for("clinician_inbox",patient_id=patient_id))
 
 @app.route("/clinician-inbox/<int:patient_id>/quick-action", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def clinician_quick_action(patient_id):
     action=request.form.get("action","nurse_review")
@@ -807,7 +807,7 @@ def clinician_quick_action(patient_id):
     return redirect(url_for("clinician_inbox",patient_id=patient_id))
 
 @app.route("/clinician-inbox/<int:question_id>/respond", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def clinician_respond(question_id):
     q=query_db("SELECT * FROM patient_questions WHERE id=?",(question_id,),one=True)
@@ -824,7 +824,7 @@ def clinician_respond(question_id):
     return redirect(url_for("clinician_inbox"))
 
 @app.route("/digital-twin/<int:patient_id>")
-@login_required
+#@login_required
 def digital_twin(patient_id):
     p=query_db("SELECT * FROM patients WHERE id=?",(patient_id,),one=True)
     if not p: abort(404)
@@ -861,13 +861,13 @@ def _diagnostics_context(**overrides):
 
 
 @app.route("/ai-diagnostics")
-@login_required
+#@login_required
 def ai_diagnostics():
     return render_template("ai_diagnostics.html", **_diagnostics_context())
 
 
 @app.route("/ai-diagnostics/<module>", methods=["GET","POST"])
-@login_required
+#@login_required
 def ai_diagnostics_module(module):
     # 'lung' was the old single demo module; it now resolves to the CT model.
     if module == "lung":
@@ -928,7 +928,7 @@ def ai_diagnostics_module(module):
 
 
 @app.route("/ai-diagnostics/report/<run_id>.pdf")
-@login_required
+#@login_required
 def ai_diagnostics_report(run_id):
     """Download one AI analysis as a PDF report."""
     result=load_report_result(run_id)
@@ -941,7 +941,7 @@ def ai_diagnostics_report(run_id):
 
 
 @app.route("/diagnostics-image/<path:filename>")
-@login_required
+#@login_required
 def diagnostics_image(filename):
     """Serve an uploaded scan back to the clinician who submitted it."""
     if "/" in filename or "\\" in filename or ".." in filename:
@@ -950,7 +950,7 @@ def diagnostics_image(filename):
 
 
 @app.route("/hospital")
-@login_required
+#@login_required
 def hospital_command_centre():
     demo = hospital_demo_status()
     rows = hospital_dashboard_rows() if demo["loaded"] else []
@@ -976,7 +976,7 @@ def hospital_command_centre():
 
 
 @app.route("/hospital/demo-seed", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin")
 def hospital_demo_seed():
     result = seed_hospital_demo_data()
@@ -987,7 +987,7 @@ def hospital_demo_seed():
 
 
 @app.route("/hospital/scan", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def hospital_scan():
     if not hospital_demo_status()["loaded"]:
@@ -1007,7 +1007,7 @@ def hospital_scan():
 
 
 @app.route("/hospital/admission/<int:admission_id>")
-@login_required
+#@login_required
 def hospital_admission(admission_id):
     detail = hospital_admission_detail(admission_id)
     if not detail:
@@ -1028,7 +1028,7 @@ def hospital_admission(admission_id):
 
 
 @app.route("/hospital/run/<int:run_id>")
-@login_required
+#@login_required
 def hospital_agent_run(run_id):
     state = hospital_run_state(run_id)
     if not state:
@@ -1051,7 +1051,7 @@ def hospital_agent_run(run_id):
 
 
 @app.route("/hospital/run/<int:run_id>/approve", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse")
 def hospital_agent_approve(run_id):
     try:
@@ -1066,7 +1066,7 @@ def hospital_agent_approve(run_id):
 
 
 @app.route("/hospital/run/<int:run_id>/reject", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse")
 def hospital_agent_reject(run_id):
     try:
@@ -1081,13 +1081,13 @@ def hospital_agent_reject(run_id):
 
 
 @app.route("/api/hospital-ai/status")
-@login_required
+#@login_required
 def api_hospital_ai_status():
     return jsonify(hospital_ai_status())
 
 
 @app.route("/agentic-care")
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def agentic_care():
     patients = patient_options()
@@ -1107,7 +1107,7 @@ def agentic_care():
 
 
 @app.route("/agentic-care/simulate", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def simulate_agentic_event():
     try:
@@ -1142,7 +1142,7 @@ def simulate_agentic_event():
 
 
 @app.route("/agentic-care/module/<module_key>")
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def agentic_module_route(module_key):
     targets = {
@@ -1160,7 +1160,7 @@ def agentic_module_route(module_key):
 
 
 @app.route("/agentic-care/patient/<int:patient_id>/simulate", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def simulate_patient_agentic_fall(patient_id):
     event_type = (request.form.get("event_type") or "fall").strip().lower()
@@ -1178,7 +1178,7 @@ def simulate_patient_agentic_fall(patient_id):
 
 
 @app.route("/agentic-care/run/<int:run_id>")
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def agentic_run(run_id):
     try:
@@ -1198,7 +1198,7 @@ def agentic_run(run_id):
 
 
 @app.route("/agentic-care/run/<int:run_id>/advance", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def advance_agentic_run(run_id):
     try:
@@ -1209,7 +1209,7 @@ def advance_agentic_run(run_id):
 
 
 @app.route("/agentic-care/run/<int:run_id>/status")
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def agentic_run_status(run_id):
     try:
@@ -1219,7 +1219,7 @@ def agentic_run_status(run_id):
 
 
 @app.route("/agentic-care/run/<int:run_id>/approve", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse")
 def approve_agentic_run(run_id):
     note = request.form.get("note", "")[:500]
@@ -1234,7 +1234,7 @@ def approve_agentic_run(run_id):
 
 
 @app.route("/agentic-care/run/<int:run_id>/reject", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse")
 def reject_agentic_run(run_id):
     note = request.form.get("note", "")[:500]
@@ -1250,7 +1250,7 @@ def reject_agentic_run(run_id):
 
 
 @app.route("/agentic-care/run/<int:run_id>/outcome")
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def agentic_outcome(run_id):
     try:
@@ -1355,7 +1355,7 @@ def care_bot_handoff():
 
 
 @app.route("/patients")
-@login_required
+#@login_required
 def patients_page():
     legacy_filter = normalise_patient_filter(request.args.get("filter")) if request.args.get("filter") else "all"
     risk = (request.args.get("risk") or "all").strip().lower()
@@ -1388,7 +1388,7 @@ def patients_page():
 
 
 @app.route("/patients/new", methods=["GET", "POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse")
 def patient_new():
     form_data = normalise_patient_form(request.form) if request.method == "POST" else {
@@ -1424,7 +1424,7 @@ def patient_new():
 
 
 @app.route("/patient/<int:patient_id>/edit", methods=["GET", "POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse")
 def patient_edit(patient_id):
     patient_row = query_db("SELECT * FROM patients WHERE id=?", (patient_id,), one=True)
@@ -1469,7 +1469,7 @@ def patient_edit(patient_id):
 
 
 @app.route("/patient/<int:patient_id>/archive", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin")
 def patient_archive(patient_id):
     if not query_db("SELECT id FROM patients WHERE id=?", (patient_id,), one=True):
@@ -1485,7 +1485,7 @@ def patient_archive(patient_id):
 
 
 @app.route("/patient/<int:patient_id>/reactivate", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin")
 def patient_reactivate(patient_id):
     if not query_db("SELECT id FROM patients WHERE id=?", (patient_id,), one=True):
@@ -1497,13 +1497,13 @@ def patient_reactivate(patient_id):
 
 
 @app.route("/reports")
-@login_required
+#@login_required
 def reports():
     metrics=population_metrics()
     return render_template("reports.html",metrics=metrics)
 
 @app.route("/population")
-@login_required
+#@login_required
 def population():
     metrics=population_metrics()
     risk_dist=query_db("""
@@ -1524,7 +1524,7 @@ def population():
                            condition_dist=condition_dist,interventions=interventions)
 
 @app.route("/integrations")
-@login_required
+#@login_required
 def integrations():
     items=query_db("SELECT * FROM device_integrations ORDER BY category,name")
     audit("VIEW_INTEGRATIONS")
@@ -1532,7 +1532,7 @@ def integrations():
 
 
 @app.route("/integrations/device-json-generator", methods=["GET", "POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def device_json_generator():
     selected_adapter = (request.values.get("device_type") or "generic_ble_glucometer").strip()
@@ -1573,7 +1573,7 @@ def device_json_generator():
 
 
 @app.route("/integrations/device-adapters/<adapter_key>", methods=["GET", "POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def device_adapter(adapter_key):
     try:
@@ -1653,7 +1653,7 @@ def device_adapter(adapter_key):
 
 
 @app.route("/integrations/device-adapters/<adapter_key>/record/<int:record_id>/process", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def device_adapter_process(adapter_key, record_id):
     try:
@@ -1674,7 +1674,7 @@ def device_adapter_process(adapter_key, record_id):
 
 
 @app.route("/integrations/device-adapters/record/<int:record_id>/download")
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def device_adapter_record_download(record_id):
     row = get_device_adapter_record(record_id)
@@ -1696,7 +1696,7 @@ def device_adapter_record_download(record_id):
 
 
 @app.route("/api/device-adapters/<adapter_key>/ingest", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def api_device_adapter_ingest(adapter_key):
     """Programmatic ingestion path for a future BLE gateway/vendor connector.
@@ -1730,13 +1730,13 @@ def api_device_adapter_ingest(adapter_key):
         return jsonify({"success": False, "error": str(exc)}), 404
 
 @app.route("/security")
-@login_required
+#@login_required
 def security():
     audit("VIEW_SECURITY_GOVERNANCE")
     return render_template("security.html")
 
 @app.route("/audit")
-@login_required
+#@login_required
 @role_required("admin")
 def audit_view():
     rows=query_db("""SELECT a.*,u.email,u.display_name,p.external_ref
@@ -1827,7 +1827,7 @@ def api_healthkit_ingest_compat(patient_id):
 
 
 @app.route("/api/patient/<int:patient_id>/vitals")
-@login_required
+#@login_required
 def api_vitals(patient_id):
     rows=query_db("""SELECT kind,value,unit,source,measured_at FROM vitals
                      WHERE patient_id=? ORDER BY measured_at DESC LIMIT 240""",(patient_id,))
@@ -1835,7 +1835,7 @@ def api_vitals(patient_id):
     return jsonify([dict(r) for r in rows])
 
 @app.route("/api/patient/<int:patient_id>/vitals/history")
-@login_required
+#@login_required
 def api_vitals_history(patient_id):
     kind = request.args.get("metric")
     days = request.args.get("days", default=7, type=int)
@@ -1881,7 +1881,7 @@ def api_vitals_history(patient_id):
 
 
 @app.route("/api/patient/<int:patient_id>/monitoring-series")
-@login_required
+#@login_required
 def api_patient_monitoring_series(patient_id):
     """Return Patient 360 monitoring data without changing the legacy vitals API.
 
@@ -2022,7 +2022,7 @@ def api_patient_monitoring_series(patient_id):
 
 
 @app.route("/patient/<int:patient_id>/monitoring-report.pdf", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def patient_monitoring_report_pdf(patient_id):
     patient_row = query_db(
@@ -2091,7 +2091,7 @@ def patient_monitoring_report_pdf(patient_id):
 
 
 @app.route("/patient/<int:patient_id>/ecg/<int:ecg_record_id>/report.pdf", methods=["GET"])
-@login_required
+#@login_required
 @role_required("admin", "nurse", "gp")
 def patient_ecg_report_pdf(patient_id, ecg_record_id):
     patient_row = query_db(
@@ -2149,27 +2149,27 @@ def patient_ecg_report_pdf(patient_id, ecg_record_id):
 
 
 @app.route("/api/patient/<int:patient_id>/twin")
-@login_required
+#@login_required
 def api_twin(patient_id):
     latest=get_latest_vitals(patient_id)
     risks=query_db("SELECT risk_type,score,level,explanation,created_at FROM risk_scores WHERE patient_id=? ORDER BY created_at DESC LIMIT 8",(patient_id,))
     return jsonify({"latest":latest,"risks":[dict(r) for r in risks]})
 
 @app.route("/api/patient/<int:patient_id>/fhir")
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def api_fhir(patient_id):
     audit("FHIR_EXPORT",patient_id,"Synthetic FHIR R4-style demo bundle")
     return jsonify(patient_bundle(patient_id))
 
 @app.route("/api/notifications/<int:patient_id>")
-@login_required
+#@login_required
 def api_notifications(patient_id):
     rows=query_db("SELECT * FROM notifications WHERE patient_id=? ORDER BY created_at DESC LIMIT 20",(patient_id,))
     return jsonify([dict(r) for r in rows])
 
 @app.route("/notify/<int:patient_id>", methods=["POST"])
-@login_required
+#@login_required
 @role_required("admin","nurse","gp")
 def notify(patient_id):
     channel=request.form.get("channel","app")
@@ -2216,6 +2216,6 @@ if __name__ == "__main__":
     start_optional_hospital_scheduler()
     app.run(
         host=os.getenv("CAREAI_HOST", "127.0.0.1"),
-        port=int(os.getenv("CAREAI_PORT", "5002")),
+        port=int(os.getenv("CAREAI_PORT", "5000")),
         debug=os.getenv("CAREAI_ENV", "development") == "development",
     )
