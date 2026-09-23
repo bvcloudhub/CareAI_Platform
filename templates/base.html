@@ -117,6 +117,40 @@
       if (e.key === "Escape") { input.value = ""; apply(); }
     });
   })();
+
+  // Patient photo fallback. If a database photo path points to a file that is
+  // no longer present (for example after moving the project), show initials
+  // instead of a broken-image icon. Newly/re-uploaded photos still render normally.
+  (function () {
+    function initials(name) {
+      var words = (name || '').trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return '?';
+      return ((words[0][0] || '') + (words.length > 1 ? (words[words.length - 1][0] || '') : '')).toUpperCase();
+    }
+
+    function replaceBrokenPatientPhoto(img) {
+      if (!img || img.dataset.patientPhotoFallbackDone === '1') return;
+      if (!/\/static\/uploads\/patients\//.test(img.src || '')) return;
+      img.dataset.patientPhotoFallbackDone = '1';
+
+      var fallback = document.createElement('span');
+      fallback.className = ((img.className || '') + ' patient-photo-fallback patient-photo-generated').trim();
+      fallback.textContent = initials(img.alt);
+      fallback.setAttribute('role', 'img');
+      fallback.setAttribute('aria-label', (img.alt || 'Patient') + ' profile photo unavailable');
+      fallback.title = 'Profile photo unavailable. Re-upload the photo from Edit Patient to restore it.';
+      img.replaceWith(fallback);
+    }
+
+    document.addEventListener('error', function (event) {
+      var target = event.target;
+      if (target && target.tagName === 'IMG') replaceBrokenPatientPhoto(target);
+    }, true);
+
+    document.querySelectorAll('img[src*="/static/uploads/patients/"]').forEach(function (img) {
+      if (img.complete && img.naturalWidth === 0) replaceBrokenPatientPhoto(img);
+    });
+  })();
 </script>
 <script src="{{url_for('static',filename='js/care_bot.js')}}" defer></script>
 </body>
