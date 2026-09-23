@@ -1,4 +1,5 @@
 from services.db import query_db,execute_db
+from services.risk_engine import latest_vital_row
 from datetime import datetime
 import random
 
@@ -7,7 +8,7 @@ UNITS={"spo2":"%","resp_rate":"/min","heart_rate":"bpm","bp_sys":"mmHg","bp_dia"
 
 def insert(pid,kind,val,unit=None,source="simulator"):
     execute_db("INSERT INTO vitals(patient_id,kind,value,unit,source,measured_at) VALUES(?,?,?,?,?,?)",
-               (pid,kind,round(float(val),2),unit or UNITS[kind],source,datetime.now().isoformat(timespec="seconds")))
+               (pid,kind,round(float(val),2),unit or UNITS[kind],source,datetime.now().isoformat(timespec="microseconds")))
 
 def reset_scenario_state(pid):
     # Reset active demo physiology so scenarios don't contaminate one another.
@@ -21,9 +22,8 @@ def reset_scenario_state(pid):
                (pid,"scenario_reset","simulator","Scenario state reset to healthy synthetic baseline."))
 
 def last(pid,kind,default):
-    r=query_db("SELECT value FROM vitals WHERE patient_id=? AND kind=? ORDER BY measured_at DESC LIMIT 1",(pid,kind),one=True)
-    return r["value"] if r else default
-
+    row = latest_vital_row(pid, kind)
+    return row["value"] if row else default
 def tick_all_patients():
     for p in query_db("SELECT id FROM patients WHERE active=1"):
         pid=p["id"]

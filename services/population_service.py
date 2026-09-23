@@ -13,9 +13,10 @@ from typing import Any
 from services.access_scope import patient_scope_clause
 from services.db import query_db
 from services.patient_service import patient_age
+from services.clinical_evidence_service import priority_snapshot
 
 RISK_RANK = {"critical": 4, "high": 3, "medium": 2, "attention": 2, "low": 1, "stable": 1}
-ACTIVE_AGENTIC_STATUSES = {"created", "detected", "triaged", "awaiting_approval", "approved", "responding", "in_progress"}
+ACTIVE_AGENTIC_STATUSES = {"running", "created", "detected", "triaged", "awaiting_approval", "approved", "responding", "in_progress"}
 
 
 def _text(value: Any) -> str:
@@ -108,7 +109,18 @@ def _scoped_base_rows(*, user_id: int, role: str, status: str = "active") -> lis
                cuser.display_name assigned_clinician_name,
                (SELECT r.level FROM risk_scores r WHERE r.patient_id=p.id AND r.risk_type='overall' ORDER BY r.id DESC LIMIT 1) risk_level,
                (SELECT r.score FROM risk_scores r WHERE r.patient_id=p.id AND r.risk_type='overall' ORDER BY r.id DESC LIMIT 1) risk_score,
-               (SELECT ar.severity FROM agentic_runs ar WHERE ar.patient_id=p.id AND ar.status!='rejected' ORDER BY ar.id DESC LIMIT 1) agentic_severity,
+               (SELECT ar.severity
+                  FROM agentic_runs ar
+                 WHERE ar.patient_id=p.id
+                   AND lower(ar.status) IN ('running','awaiting_approval','responding')
+                 ORDER BY CASE lower(ar.severity)
+                            WHEN 'critical' THEN 4
+                            WHEN 'high' THEN 3
+                            WHEN 'medium' THEN 2
+                            ELSE 1
+                          END DESC,
+                          ar.id DESC
+                 LIMIT 1) agentic_severity,
                (SELECT GROUP_CONCAT(c.display, ', ') FROM conditions c WHERE c.patient_id=p.id AND c.active=1) condition_summary,
                (SELECT MAX(v.measured_at) FROM vitals v WHERE v.patient_id=p.id) latest_vitals_at,
                (SELECT MAX(v.measured_at) FROM vitals v WHERE v.patient_id=p.id AND lower(COALESCE(v.source,'')) NOT IN ('simulator','manual')) latest_external_vital_at,
@@ -120,7 +132,7 @@ def _scoped_base_rows(*, user_id: int, role: str, status: str = "active") -> lis
                (SELECT ce.event_type FROM care_events ce WHERE ce.patient_id=p.id ORDER BY ce.created_at DESC LIMIT 1) latest_event_type,
                (SELECT ce.created_at FROM care_events ce WHERE ce.patient_id=p.id ORDER BY ce.created_at DESC LIMIT 1) latest_event_at,
                (SELECT COUNT(*) FROM alerts a WHERE a.patient_id=p.id AND a.status='open') open_alert_count,
-               (SELECT COUNT(*) FROM agentic_runs ar WHERE ar.patient_id=p.id AND lower(ar.status) IN ('created','detected','triaged','awaiting_approval','approved','responding','in_progress')) open_agentic_count
+               (SELECT COUNT(*) FROM agentic_runs ar WHERE ar.patient_id=p.id AND lower(ar.status) IN ('running','created','detected','triaged','awaiting_approval','approved','responding','in_progress')) open_agentic_count
         FROM patients p
         LEFT JOIN users n ON n.id=p.assigned_nurse_id
         LEFT JOIN users cuser ON cuser.id=p.assigned_clinician_id
@@ -134,8 +146,27 @@ def _scoped_base_rows(*, user_id: int, role: str, status: str = "active") -> lis
     for row in rows:
         item = dict(row)
         item["age"] = patient_age(item.get("birth_date"))
-        item["priority"] = _priority(item.get("current_status"), item.get("risk_level"), item.get("agentic_severity"))
-        item["risk_score"] = int(item.get("risk_score") or 0)
+
+        # Keep raw Care Intelligence values available for audit/explanation.
+        item["care_risk_level"] = (
+            _text(item.get("risk_level")).lower() or "low"
+        )
+        item["care_risk_score"] = int(item.get("risk_score") or 0)
+
+        # Use exactly the same current-priority resolver as Command Centre
+        # and Patient 360. This prevents combinations such as
+        # "CRITICAL · Score 30".
+        snapshot = priority_snapshot(int(item["id"]))
+
+        item["priority"] = (
+            _text(snapshot.get("level")).lower() or "low"
+        )
+        item["risk_score"] = int(snapshot.get("score") or 0)
+        item["priority_source"] = (
+            snapshot.get("source") or "Care intelligence"
+        )
+        item["priority_reason"] = snapshot.get("reason") or ""
+        item["priority_run_id"] = snapshot.get("run_id")
         external_times = [item.get("latest_external_vital_at"), item.get("latest_adapter_at"), item.get("latest_wearable_at")]
         external_times = [t for t in external_times if t]
         item["latest_device_at"] = max(external_times) if external_times else None

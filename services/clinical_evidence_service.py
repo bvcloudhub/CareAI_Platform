@@ -12,7 +12,11 @@ import sqlite3
 from datetime import date, datetime
 
 from services.db import query_db
-from services.risk_engine import RISK_LEVEL_THRESHOLDS, risk_rule_metadata
+from services.risk_engine import (
+    RISK_LEVEL_THRESHOLDS,
+    latest_vital_row,
+    risk_rule_metadata,
+)
 
 _PRIORITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 _STALE_AFTER_HOURS = 24  # UI freshness marker only, not a clinical threshold.
@@ -75,21 +79,9 @@ def _patient(patient_id):
 
 
 def _latest_vital_row(patient_id, kind, as_of=None):
-    as_of_sql = " AND datetime(measured_at)<=datetime(?)" if as_of else ""
-    args = [patient_id, kind]
-    if as_of:
-        args.append(as_of)
-    return query_db(
-        f"""SELECT kind,value,unit,source,measured_at
-            FROM vitals
-            WHERE patient_id=? AND kind=? {as_of_sql}
-            ORDER BY CASE WHEN source='simulator' THEN 1 ELSE 0 END,
-                     datetime(measured_at) DESC,id DESC
-            LIMIT 1""",
-        tuple(args), one=True,
-    )
-
-
+    # Shared with the Risk Engine so explanation and calculation
+    # always refer to the same measurement.
+    return latest_vital_row(patient_id, kind, as_of=as_of)
 def _metric(row, label):
     if not row:
         return {
@@ -452,7 +444,26 @@ def build_clinical_evidence(patient_id, run_id=None):
     workflow = _workflow_row(patient_id, run_id=run_id, active_only=False) if run_id else _workflow_row(patient_id, active_only=True)
     workflow = dict(workflow) if workflow else None
     priority = priority_snapshot(patient_id)
-    if workflow and run_id:
+
+    # A workflow is allowed to influence CURRENT patient priority only
+    # while it is operationally active. Completed/rejected workflows
+    # remain available as history but must not override current risk.
+    active_workflow_statuses = {
+        "running",
+        "awaiting_approval",
+        "responding",
+    }
+
+    workflow_status = (
+        (workflow.get("status") or "").lower()
+        if workflow else ""
+    )
+
+    workflow_is_active = (
+        workflow_status in active_workflow_statuses
+    )
+
+    if workflow and run_id and workflow_is_active:
         if workflow["module_key"] == "hospital":
             priority = {
                 "level": (workflow["severity"] or "low").lower(),
@@ -472,8 +483,19 @@ def build_clinical_evidence(patient_id, run_id=None):
 
     detail = _hospital_detail(workflow)
     home_vitals = _home_vitals(patient_id)
-    inpatient_vitals = _hospital_metrics(detail)
-    clinical_data = inpatient_vitals if inpatient_vitals else home_vitals
+
+    # Historical Hospital AI runs remain available for audit/history,
+    # but their old inpatient observations must not masquerade as the
+    # patient's current Patient 360 measurements.
+    inpatient_vitals = (
+        _hospital_metrics(detail)
+        if workflow_is_active else []
+    )
+
+    clinical_data = (
+        inpatient_vitals
+        if inpatient_vitals else home_vitals
+    )
     conditions = _conditions(patient_id)
     medications = _medications(patient_id)
     risks = risk_breakdown(patient_id)
@@ -485,10 +507,37 @@ def build_clinical_evidence(patient_id, run_id=None):
         elif metric.get("freshness", {}).get("state") == "stale":
             missing.append(f"{metric['label']} is stale ({metric['freshness']['label']})")
 
-    rule_result = _hospital_rule_result(workflow["id"]) if workflow and workflow["module_key"] == "hospital" else {}
-    triage = _triage_result(workflow["id"]) if workflow and workflow["module_key"] == "hospital" else None
-    steps = _workflow_steps(workflow["id"]) if workflow else []
-    why_factors = _why_hospital_priority(workflow, detail, rule_result) if detail else []
+    rule_result = (
+        _hospital_rule_result(workflow["id"])
+        if workflow_is_active
+        and workflow
+        and workflow["module_key"] == "hospital"
+        else {}
+    )
+
+    triage = (
+        _triage_result(workflow["id"])
+        if workflow_is_active
+        and workflow
+        and workflow["module_key"] == "hospital"
+        else None
+    )
+
+    # Historical workflow steps are still shown for audit/history.
+    steps = (
+        _workflow_steps(workflow["id"])
+        if workflow else []
+    )
+
+    why_factors = (
+        _why_hospital_priority(
+            workflow,
+            detail,
+            rule_result,
+        )
+        if workflow_is_active and detail
+        else []
+    )
 
     home_overall = query_db(
         "SELECT * FROM risk_scores WHERE patient_id=? AND risk_type='overall' ORDER BY id DESC LIMIT 1",
@@ -505,12 +554,27 @@ def build_clinical_evidence(patient_id, run_id=None):
         ]
 
     location = p.get("city") or "Not recorded"
-    if detail:
+
+    # Only an active hospital episode becomes the CURRENT location.
+    if detail and workflow_is_active:
         a = detail["admission"]
-        location = f"{a['ward']} · Room {a['room']} · Bed {a['bed']}"
+        location = (
+            f"{a['ward']} · "
+            f"Room {a['room']} · "
+            f"Bed {a['bed']}"
+        )
+
     recommendation = priority["reason"]
-    if detail and detail.get("anomaly"):
-        recommendation = detail["anomaly"].get("recommended_review") or recommendation
+
+    if (
+        workflow_is_active
+        and detail
+        and detail.get("anomaly")
+    ):
+        recommendation = (
+            detail["anomaly"].get("recommended_review")
+            or recommendation
+        )
 
     return {
         "patient": {
@@ -533,6 +597,7 @@ def build_clinical_evidence(patient_id, run_id=None):
         "home_data": home_vitals,
         "hospital": detail,
         "workflow": workflow,
+        "workflow_is_active": workflow_is_active,
         "agent_trail": steps,
         "why_priority": why_factors,
         "recommendation": recommendation,

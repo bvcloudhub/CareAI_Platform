@@ -75,17 +75,67 @@ def risk_rule_metadata(risk_type):
         "sources": ["risk_scores"],
     })
 
-def _latest(pid,kind,default=None):
-    r=query_db("""
-        SELECT value
-        FROM vitals
-        WHERE patient_id=? AND kind=?
-        ORDER BY CASE WHEN source='simulator' THEN 1 ELSE 0 END,
-                 measured_at DESC
-        LIMIT 1
-    """,(pid,kind),one=True)
-    return r["value"] if r else default
+VITAL_KINDS = [
+    "spo2",
+    "resp_rate",
+    "heart_rate",
+    "bp_sys",
+    "bp_dia",
+    "activity",
+    "temperature",
+    "sleep",
+]
 
+
+def latest_vital_row(pid, kind, as_of=None):
+    """
+    Return one deterministic current vital record.
+
+    All CareAI modules should use this selector so Patient 360,
+    Risk Engine, Clinical Evidence and Agentic Care resolve the
+    same measurement.
+
+    measured_at is the clinical ordering key.
+    id DESC is the final tie-break when two values were stored
+    with the same timestamp.
+    """
+    as_of_sql = " AND datetime(measured_at)<=datetime(?)" if as_of else ""
+    args = [pid, kind]
+
+    if as_of:
+        args.append(as_of)
+
+    return query_db(
+        f"""
+        SELECT id,kind,value,unit,source,measured_at
+        FROM vitals
+        WHERE patient_id=? AND kind=? {as_of_sql}
+        ORDER BY
+            CASE WHEN lower(COALESCE(source,''))='simulator'
+                 THEN 1 ELSE 0 END,
+            datetime(measured_at) DESC,
+            id DESC
+        LIMIT 1
+        """,
+        tuple(args),
+        one=True,
+    )
+
+
+def latest_vital_records(pid, as_of=None):
+    """Return the same current vital snapshot, including metadata."""
+    result = {}
+
+    for kind in VITAL_KINDS:
+        row = latest_vital_row(pid, kind, as_of=as_of)
+        result[kind] = dict(row) if row else None
+
+    return result
+
+
+def _latest(pid,kind,default=None):
+    row = latest_vital_row(pid, kind)
+    return row["value"] if row else default
 def _condition(pid,text):
     return bool(query_db("SELECT 1 FROM conditions WHERE patient_id=? AND active=1 AND lower(display) LIKE ?",(pid,f"%{text.lower()}%"),one=True))
 
@@ -107,9 +157,7 @@ def save(pid,risk,score,explanation,evidence):
     return {"risk":risk,"score":int(score),"level":level,"explanation":explanation,"evidence":evidence}
 
 def get_latest_vitals(pid):
-    kinds=["spo2","resp_rate","heart_rate","bp_sys","bp_dia","activity","temperature","sleep"]
-    return {k:_latest(pid,k) for k in kinds}
-
+    return {kind: _latest(pid, kind) for kind in VITAL_KINDS}
 def latest_risks(pid):
     # one current card per risk type
     rows=query_db("""

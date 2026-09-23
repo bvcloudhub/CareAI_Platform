@@ -28,3 +28,20 @@ static/uploads/patients/*
 
 uploads/diagnostics/
 static/cam/
+
+
+# Ignore Windows/manual copy files
+* - Copy*
+
+Care_AI_Notes/
+sample_images/
+CareAI_consistency_fix_source/
+CareAI_consistency_fix_source.zip
+_consistency_fix_backup_20260923_174036/
+apply_consistency_fix.py
+CareAI_consistency_fix_updated_files.zip
+apply_consistency_fix_v2.py
+CareAI_consistency_fix_v2_updated_files.zip
+_consistency_fix_v2_backup_20260923_180251/
+CareAI_patient_tab_consistency_fix.zip
+dashboard_metrics_service_backup_20260923_181910.py

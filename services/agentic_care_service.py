@@ -18,6 +18,8 @@ import secrets
 from datetime import date, datetime
 
 from services.db import execute_db, query_db
+from services.clinical_evidence_service import priority_snapshot
+from services.risk_engine import latest_vital_records
 
 
 MEDICAL_DISCLAIMER = (
@@ -164,30 +166,22 @@ def _medications(patient_id):
 
 
 def _latest_vitals(patient_id):
-    rows = query_db(
-        """
-        SELECT v.kind, v.value, v.unit, v.measured_at
-        FROM vitals v
-        JOIN (
-          SELECT kind, MAX(id) AS max_id
-          FROM vitals
-          WHERE patient_id=?
-          GROUP BY kind
-        ) latest ON latest.max_id=v.id
-        ORDER BY v.kind
-        """,
-        (patient_id,),
-    )
+    """
+    Agentic Care uses the same measurement snapshot as the Risk Engine
+    and Patient 360.
+    """
+    records = latest_vital_records(patient_id)
+
     return {
-        row["kind"]: {
+        kind: {
             "value": row["value"],
-            "unit": row["unit"],
-            "measured_at": row["measured_at"],
+            "unit": row.get("unit"),
+            "measured_at": row.get("measured_at"),
+            "source": row.get("source"),
         }
-        for row in rows
+        for kind, row in records.items()
+        if row
     }
-
-
 def _format_vitals(vitals):
     wanted = [
         ("spo2", "SpO₂"),
@@ -1637,6 +1631,49 @@ def dashboard_agentic_cases(limit=12):
             case["alert_type"] = case.get("event_label") or ("Fall-related event" if "fall" in (case.get("scenario") or "").lower() else "Patient event")
             case["location"] = case.get("location") or meta3.get("location") or "Location not recorded"
 
+        # Preserve original workflow triage as history.
+        case["workflow_severity"] = (
+            case.get("severity") or "low"
+        ).lower()
+
+        case["workflow_triage_score"] = int(
+            case.get("triage_score") or 0
+        )
+
+        # Command Centre must display the SAME CURRENT priority
+        # as Patient 360, Population and Reports.
+        #
+        # priority_snapshot() considers:
+        #   - latest Care Intelligence overall score
+        #   - ACTIVE Agentic/Hospital workflows only
+        #
+        # Completed/rejected historical workflows therefore remain
+        # visible as events but cannot keep a patient Critical.
+        current_priority = priority_snapshot(
+            int(case["patient_id"])
+        )
+
+        case["severity"] = (
+            current_priority.get("level") or "low"
+        ).lower()
+
+        case["triage_score"] = int(
+            current_priority.get("score") or 0
+        )
+
+        case["current_priority_level"] = case["severity"]
+        case["current_priority_score"] = case["triage_score"]
+        case["priority_source"] = (
+            current_priority.get("source")
+            or "Care intelligence"
+        )
+        case["priority_reason"] = (
+            current_priority.get("reason") or ""
+        )
+        case["priority_run_id"] = (
+            current_priority.get("run_id")
+        )
+
         case["event_detected_at"] = case.get("context_event_at") or case.get("event_detected_at") or case.get("started_at")
         case["assigned_nurse"] = case.get("assigned_professional") or "Responsible clinician"
         if case["status"] == "awaiting_approval":
@@ -1654,6 +1691,49 @@ def dashboard_agentic_cases(limit=12):
         case["teleconsultation_id"] = tele["reference_id"] if tele else None
         case["family_update_status"] = family["status"] if family else "pending"
         result.append(case)
+
+    # Sort the queue using CURRENT priority.
+    # Active workflows remain operationally prominent, while a
+    # completed historical Critical event cannot keep a recovered
+    # patient at the top of the queue.
+    active_statuses = {
+        "running",
+        "awaiting_approval",
+        "responding",
+    }
+
+    priority_rank = {
+        "critical": 4,
+        "high": 3,
+        "medium": 2,
+        "low": 1,
+    }
+
+    result.sort(
+        key=lambda case: (
+            1 if (
+                case.get("status")
+                in active_statuses
+            ) else 0,
+            priority_rank.get(
+                (
+                    case.get("severity")
+                    or "low"
+                ).lower(),
+                1,
+            ),
+            int(
+                case.get("triage_score")
+                or 0
+            ),
+            int(
+                case.get("run_id")
+                or 0
+            ),
+        ),
+        reverse=True,
+    )
+
     return result
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import re
 import secrets
+import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from typing import Any
 from PIL import Image, UnidentifiedImageError
 
 from services.db import get_conn, query_db
+from services.clinical_evidence_service import priority_snapshot
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PATIENT_UPLOAD_DIR = PROJECT_ROOT / "static" / "uploads" / "patients"
@@ -902,34 +904,218 @@ def patient_form_data(patient_id: int) -> dict[str, Any]:
 
 
 def _list_base_rows(status: str = "active") -> list[dict]:
+    """Return Patient Management rows using one canonical CURRENT priority.
+
+    Patient Management must show the same current patient priority as:
+    - Patient 360
+    - Command Centre
+    - Population
+    - Reports
+    - Home dashboard
+
+    Completed/rejected historical Agentic workflows remain available in
+    Agentic Care history, but they do not override the patient's current
+    Care Intelligence status.
+    """
+
     where = ""
+
     if status == "active":
         where = "WHERE p.active=1"
     elif status == "archived":
         where = "WHERE p.active=0"
+
     rows = query_db(
         f"""
-        SELECT p.*,
-               n.display_name assigned_nurse_name,
-               cuser.display_name assigned_clinician_name,
-               (SELECT r.level FROM risk_scores r WHERE r.patient_id=p.id AND r.risk_type='overall' ORDER BY r.id DESC LIMIT 1) risk_level,
-               (SELECT r.score FROM risk_scores r WHERE r.patient_id=p.id AND r.risk_type='overall' ORDER BY r.id DESC LIMIT 1) risk_score,
-               (SELECT ar.severity FROM agentic_runs ar WHERE ar.patient_id=p.id AND ar.status!='rejected' ORDER BY ar.id DESC LIMIT 1) agentic_severity,
-               (SELECT GROUP_CONCAT(c.display, ', ') FROM conditions c WHERE c.patient_id=p.id AND c.active=1) condition_summary
+        SELECT
+            p.*,
+
+            n.display_name AS assigned_nurse_name,
+            cuser.display_name AS assigned_clinician_name,
+
+            (
+                SELECT r.level
+                FROM risk_scores r
+                WHERE r.patient_id=p.id
+                  AND r.risk_type='overall'
+                ORDER BY r.id DESC
+                LIMIT 1
+            ) AS risk_level,
+
+            (
+                SELECT r.score
+                FROM risk_scores r
+                WHERE r.patient_id=p.id
+                  AND r.risk_type='overall'
+                ORDER BY r.id DESC
+                LIMIT 1
+            ) AS risk_score,
+
+            (
+                SELECT GROUP_CONCAT(c.display, ', ')
+                FROM conditions c
+                WHERE c.patient_id=p.id
+                  AND c.active=1
+            ) AS condition_summary
+
         FROM patients p
-        LEFT JOIN users n ON n.id=p.assigned_nurse_id
-        LEFT JOIN users cuser ON cuser.id=p.assigned_clinician_id
+
+        LEFT JOIN users n
+            ON n.id=p.assigned_nurse_id
+
+        LEFT JOIN users cuser
+            ON cuser.id=p.assigned_clinician_id
+
         {where}
-        ORDER BY p.active DESC,p.last_name,p.first_name
+
+        ORDER BY
+            p.active DESC,
+            p.last_name,
+            p.first_name
         """
     )
+
     result = []
+
     for row in rows:
         item = dict(row)
-        item["age"] = patient_age(item.get("birth_date"))
-        item["priority"] = _priority(item.get("current_status"), item.get("risk_level"), item.get("agentic_severity"))
-        item["risk_score"] = int(item.get("risk_score") or 0)
+
+        item["age"] = patient_age(
+            item.get("birth_date")
+        )
+
+        # ----------------------------------------------------------
+        # Preserve database values for audit/debugging only.
+        # ----------------------------------------------------------
+
+        item["stored_current_status"] = (
+            item.get("current_status")
+        )
+
+        item["care_risk_level"] = _priority(
+            item.get("risk_level")
+        )
+
+        item["care_risk_score"] = int(
+            item.get("risk_score") or 0
+        )
+
+        # ----------------------------------------------------------
+        # Resolve ONE canonical CURRENT patient priority.
+        #
+        # priority_snapshot() uses:
+        #
+        # 1. latest overall Care Intelligence score
+        # 2. only genuinely ACTIVE Agentic/Hospital workflows
+        #
+        # Completed historical workflows are therefore not allowed
+        # to keep a recovered patient Critical.
+        # ----------------------------------------------------------
+
+        try:
+            snapshot = priority_snapshot(
+                int(item["id"])
+            )
+
+        except sqlite3.OperationalError:
+            # Safe fallback for an incomplete/older database.
+            #
+            # Level and score still come from the same Care
+            # Intelligence assessment.
+            snapshot = {
+                "level": item["care_risk_level"],
+                "score": item["care_risk_score"],
+                "reason": (
+                    "Current Care Intelligence risk assessment"
+                ),
+                "source": "Care intelligence",
+                "run_id": None,
+                "module_key": None,
+                "updated_at": None,
+            }
+
+        resolved_level = _priority(
+            snapshot.get("level")
+        )
+
+        resolved_score = int(
+            snapshot.get("score") or 0
+        )
+
+        # ----------------------------------------------------------
+        # These fields now ALWAYS belong to the same current snapshot.
+        #
+        # This prevents impossible combinations such as:
+        #
+        # CRITICAL · 30
+        # CRITICAL · 12
+        # CRITICAL · 40
+        # ----------------------------------------------------------
+
+        item["priority"] = resolved_level
+
+        item["priority_label"] = (
+            resolved_level.title()
+        )
+
+        item["risk_score"] = resolved_score
+
+        item["priority_score"] = resolved_score
+
+        item["current_priority"] = resolved_level
+
+        item["current_priority_score"] = (
+            resolved_score
+        )
+
+        item["priority_source"] = (
+            snapshot.get("source")
+            or "Care intelligence"
+        )
+
+        item["priority_reason"] = (
+            snapshot.get("reason")
+            or ""
+        )
+
+        item["priority_run_id"] = (
+            snapshot.get("run_id")
+        )
+
+        item["priority_module_key"] = (
+            snapshot.get("module_key")
+        )
+
+        item["priority_updated_at"] = (
+            snapshot.get("updated_at")
+        )
+
+        # ----------------------------------------------------------
+        # Backwards-compatible current_status for any existing
+        # Patient Management component that still reads it.
+        #
+        # IMPORTANT:
+        # this modifies only this Python dictionary.
+        # It does NOT UPDATE the patients table.
+        # ----------------------------------------------------------
+
+        item["current_status"] = resolved_level
+
+        # ----------------------------------------------------------
+        # Backwards-compatible Agentic field.
+        #
+        # Only an ACTIVE workflow receives a value here.
+        # Completed/rejected historical workflows do not.
+        # ----------------------------------------------------------
+
+        item["agentic_severity"] = (
+            resolved_level
+            if snapshot.get("run_id")
+            else None
+        )
+
         result.append(item)
+
     return result
 
 
