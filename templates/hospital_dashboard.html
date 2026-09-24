@@ -24,10 +24,10 @@
 <section class="hospital-ai-banner">
   <div>
     <div class="eyebrow">HYBRID DECISION-SUPPORT ENGINE</div>
-    <h2>Rules + ML + local RAG{% if ai.configured %} + optional OpenAI{% endif %}</h2>
+    <h2>Rules + ML + local RAG{% if ai.configured %}{% endif %}</h2>
     <p>
       {% if ai.configured %}
-      OpenAI is configured with {{ai.model}}. Deterministic safety rules remain the minimum urgency and human approval remains required.
+      Deterministic safety rules remain the minimum urgency and human approval remains required.
       {% else %}
       {{ai.reason}}. The hospital workflow still runs safely with deterministic rules, available ML, local protocol retrieval and human review.
       {% endif %}
